@@ -1,6 +1,6 @@
 {
   "name": "cursor-usage",
-  "version": "0.5.15",
+  "version": "0.5.18",
   "repository": {
     "type": "git",
     "url": "https://github.com/wrick17/cursor-metrics"
@@ -117,6 +117,11 @@
           "type": "boolean",
           "default": false,
           "description": "Hide rows in the usage-by-model table where token usage is zero."
+        },
+        "cursorUsage.quotaAwareEventDisplay": {
+          "type": "boolean",
+          "default": true,
+          "description": "In the dashboard, show included usage as requests and on-demand usage as spend instead of showing raw request and spend values for every event."
         }
       }
     }

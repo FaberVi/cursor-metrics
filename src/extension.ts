@@ -57,6 +57,7 @@ function getConfig() {
     modelBreakdownSortBy,
     modelBreakdownSortOrder,
     excludeZeroTokenModels: cfg.get<boolean>("excludeZeroTokenModels", false),
+    quotaAwareEventDisplay: cfg.get<boolean>("quotaAwareEventDisplay", true),
   };
 }
 
@@ -401,6 +402,7 @@ function getDashboardState(): DashboardState {
     isTeamMemberCached(),
     lastError,
     Date.now(),
+    getConfig().quotaAwareEventDisplay,
   );
 }
 
@@ -430,9 +432,11 @@ export function activate(context: vscode.ExtensionContext) {
         || e.affectsConfiguration("cursorUsage.usageDuration")
         || e.affectsConfiguration("cursorUsage.modelBreakdownSortBy")
         || e.affectsConfiguration("cursorUsage.modelBreakdownSortOrder")
-        || e.affectsConfiguration("cursorUsage.excludeZeroTokenModels"))
+        || e.affectsConfiguration("cursorUsage.excludeZeroTokenModels")
+        || e.affectsConfiguration("cursorUsage.quotaAwareEventDisplay"))
     ) {
       updateStatusBar(lastData);
+      DashboardPanel.currentPanel?.postState(getDashboardState());
     }
   });
 

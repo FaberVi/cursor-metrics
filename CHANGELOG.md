@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.18] - 2026-05-07
+
+### Added
+- Added `cursorUsage.quotaAwareEventDisplay` to control whether dashboard events show included usage as requests and on-demand usage as spend.
+
+### Fixed
+- Dashboard events, chart spend, model breakdown spend, and CSV export now treat included premium-request usage as request quota usage by default instead of on-demand spend.
+
 ## [0.5.15] - 2026-05-07
 
 ### Added

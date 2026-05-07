@@ -41,6 +41,13 @@ describe("package configuration", () => {
     expect(hideZeroTokenConfig.type).toBe("boolean");
   });
 
+  it("exposes a setting for quota-aware event display", () => {
+    const quotaAwareConfig = packageJson.contributes.configuration.properties["cursorUsage.quotaAwareEventDisplay"];
+
+    expect(quotaAwareConfig.default).toBe(true);
+    expect(quotaAwareConfig.type).toBe("boolean");
+  });
+
   it("does not depend on external sqlite binaries or native bindings", () => {
     const vscodeIgnore = readFileSync(".vscodeignore", "utf-8").split(/\r?\n/);
     const esbuildConfig = readFileSync("esbuild.config.mjs", "utf-8");

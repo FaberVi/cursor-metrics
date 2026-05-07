@@ -149,6 +149,29 @@
     return n.toFixed(1);
   }
 
+  function isOnDemandEvent(event) {
+    return event.kind === "On-Demand";
+  }
+
+  function isIncludedEvent(event) {
+    return event.kind === "Included";
+  }
+
+  function eventSpendDollars(event) {
+    if (state && state.quotaAwareEventDisplay && !isOnDemandEvent(event)) return 0;
+    return (event.spendCents || 0) / 100;
+  }
+
+  function eventRequestsText(event) {
+    if (state && state.quotaAwareEventDisplay && !isIncludedEvent(event)) return "—";
+    return formatRequests(event.requests || 0);
+  }
+
+  function eventSpendText(event) {
+    if (state && state.quotaAwareEventDisplay && !isOnDemandEvent(event)) return "—";
+    return formatDollars(eventSpendDollars(event));
+  }
+
   function formatDayLabel(dayMs) {
     return new Date(dayMs).toLocaleDateString("en-US", {
       month: "short",
@@ -253,9 +276,9 @@
       const value =
         local.metric === "tokens" ? (e.totalTokens || 0) :
         local.metric === "requests" ? (e.requests || 0) :
-        ((e.spendCents || 0) / 100);
+        eventSpendDollars(e);
       ensureArr(perModel, e.model)[idx] += value;
-      ensureArr(perModelSpend, e.model)[idx] += (e.spendCents || 0) / 100;
+      ensureArr(perModelSpend, e.model)[idx] += eventSpendDollars(e);
     }
 
     const datasets = [];
@@ -519,7 +542,6 @@
       ui.tableBody.innerHTML = events.map((e) => {
         const maxBadge = e.maxMode ? ' <span class="max-badge">MAX</span>' : "";
         const color = colorForModel(e.model);
-        const spend = (e.spendCents || 0) / 100;
         // Tint the row with a low-alpha derivative of the model color and add a
         // brighter left border for clearer association with the chart.
         const rowStyle = 'background:' + tintColor(color, 0.10) + ';box-shadow:inset 3px 0 0 ' + color + ';';
@@ -528,8 +550,8 @@
           '<td><span class="kind-badge kind-' + e.kind.replace(/[^A-Za-z]/g, "") + '">' + e.kind + "</span></td>" +
           "<td>" + escapeHtml(e.model) + maxBadge + "</td>" +
           '<td class="num">' + formatTokens(e.totalTokens || 0) + "</td>" +
-          '<td class="num">' + formatRequests(e.requests || 0) + "</td>" +
-          '<td class="num">' + formatDollars(spend) + "</td>" +
+          '<td class="num">' + eventRequestsText(e) + "</td>" +
+          '<td class="num">' + eventSpendText(e) + "</td>" +
         "</tr>";
       }).join("");
     }
@@ -570,7 +592,7 @@
       const entry = map.get(e.model) || { model: e.model, requests: 0, totalTokens: 0, spendCents: 0 };
       entry.requests += e.requests || 0;
       entry.totalTokens += e.totalTokens || 0;
-      entry.spendCents += e.spendCents || 0;
+      entry.spendCents += Math.round(eventSpendDollars(e) * 100);
       map.set(e.model, entry);
     }
     const rows = Array.from(map.values());
@@ -626,8 +648,8 @@
         e.model,
         e.maxMode ? "true" : "false",
         e.totalTokens || 0,
-        e.requests || 0,
-        ((e.spendCents || 0) / 100).toFixed(4),
+        state && state.quotaAwareEventDisplay && !isIncludedEvent(e) ? "" : (e.requests || 0),
+        state && state.quotaAwareEventDisplay && !isOnDemandEvent(e) ? "" : eventSpendDollars(e).toFixed(4),
       ].map(csvCell).join(",");
       lines.push(row);
     }

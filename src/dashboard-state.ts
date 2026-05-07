@@ -21,6 +21,7 @@ export type DashboardState = {
   dailySpend: DailySpendRow[];
   resetsAt: string | null;
   isTeamMember: boolean;
+  quotaAwareEventDisplay: boolean;
   error: string | null;
 };
 
@@ -39,6 +40,10 @@ function isOnDemand(event: UsageEvent): boolean {
   return event.kind === "On-Demand";
 }
 
+function billableSpendCents(event: UsageEvent, quotaAwareEventDisplay: boolean): number {
+  return quotaAwareEventDisplay && !isOnDemand(event) ? 0 : event.spendCents;
+}
+
 function matchesUsageFilter(event: UsageEvent, filter: UsageFilter): boolean {
   if (filter === "all") return true;
   if (filter === "included") return isIncluded(event);
@@ -52,6 +57,7 @@ export function buildDashboardState(
   isTeamMember: boolean,
   error: string | null,
   now: number,
+  quotaAwareEventDisplay = true,
 ): DashboardState {
   return {
     generatedAt: now,
@@ -60,6 +66,7 @@ export function buildDashboardState(
     dailySpend,
     resetsAt: data?.resetsAt ?? null,
     isTeamMember,
+    quotaAwareEventDisplay,
     error,
   };
 }
@@ -91,10 +98,10 @@ function formatDayLabel(dayMs: number): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
-function eventValue(event: UsageEvent, metric: ChartMetric): number {
+function eventValue(event: UsageEvent, metric: ChartMetric, quotaAwareEventDisplay: boolean): number {
   if (metric === "tokens") return event.totalTokens;
   if (metric === "requests") return event.requests;
-  return event.spendCents / 100;
+  return billableSpendCents(event, quotaAwareEventDisplay) / 100;
 }
 
 export function aggregateChartSeries(
@@ -105,6 +112,7 @@ export function aggregateChartSeries(
   metric: ChartMetric,
   usageFilter: UsageFilter,
   now: number,
+  quotaAwareEventDisplay = true,
 ): ChartSeries {
   const cutoff = getDurationCutoff(range, resetAtIso, now);
   const days = buildDayBuckets(cutoff, now);
@@ -131,7 +139,7 @@ export function aggregateChartSeries(
     const idx = dayIndex.get(day);
     if (idx === undefined) continue;
     const arr = ensureModel(event.model);
-    arr[idx] = (arr[idx] ?? 0) + eventValue(event, metric);
+    arr[idx] = (arr[idx] ?? 0) + eventValue(event, metric, quotaAwareEventDisplay);
   }
 
   // Per-day (non-cumulative) totals per model.
@@ -172,7 +180,7 @@ export function summarizeRange(
     if (event.timestamp < cutoff) continue;
     totalTokens += event.totalTokens;
     if (isIncluded(event)) includedRequests += event.requests;
-    if (isOnDemand(event)) onDemandSpendCents += event.spendCents;
+    onDemandSpendCents += billableSpendCents(event, true);
   }
 
   return {

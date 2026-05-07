@@ -31,6 +31,7 @@ describe("buildDashboardState", () => {
     expect(state.data).toBe(sampleData);
     expect(state.events.length).toBe(5);
     expect(state.isTeamMember).toBeTrue();
+    expect(state.quotaAwareEventDisplay).toBeTrue();
     expect(state.error).toBeNull();
     expect(state.resetsAt).toBeNull();
   });
@@ -111,6 +112,28 @@ describe("aggregateChartSeries", () => {
     const onlyOnDemand = aggregateChartSeries(sampleEvents, [], "7d", null, "spend", "ondemand", now);
     const codex = onlyOnDemand.datasets.find((d) => d.model === "gpt-5.3-codex")!;
     expect(sumOf(codex.data)).toBeCloseTo(3.2, 5);
+  });
+
+  it("does not count chargedCents as spend while requests are included by default", () => {
+    const events: UsageEvent[] = [
+      { timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 2000, requests: 2, spendCents: 450, maxMode: false },
+      { timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 3000, requests: 1.5, spendCents: 320, maxMode: true },
+    ];
+
+    const series = aggregateChartSeries(events, [], "7d", null, "spend", "all", now);
+    const codex = series.datasets.find((d) => d.model === "gpt-5.3-codex")!;
+    expect(sumOf(codex.data)).toBeCloseTo(3.2, 5);
+  });
+
+  it("keeps included chargedCents in spend when quota-aware display is disabled", () => {
+    const events: UsageEvent[] = [
+      { timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 2000, requests: 2, spendCents: 450, maxMode: false },
+      { timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 3000, requests: 1.5, spendCents: 320, maxMode: true },
+    ];
+
+    const series = aggregateChartSeries(events, [], "7d", null, "spend", "all", now, false);
+    const codex = series.datasets.find((d) => d.model === "gpt-5.3-codex")!;
+    expect(sumOf(codex.data)).toBeCloseTo(7.7, 5);
   });
 
   it("respects usage filter for token metric", () => {
