@@ -1,0 +1,368 @@
+import { apiLog } from "./cursor-api-logger";
+import type {
+  NumberWithSource,
+  RequestTotals,
+  UsageEvent,
+  UsagePayload,
+} from "./cursor-api-types";
+import { asRecord, getBillingCycleCutoff, nextMonth, parseTimestamp, toNumber } from "./cursor-api-utils";
+import { getCachedMaxRequestUsage } from "./cursor-setup-cache";
+
+function extractBucketTotals(bucket: Record<string, unknown>, source: string): RequestTotals | null {
+  const used =
+    toNumber(bucket.numRequests) ??
+    toNumber(bucket.usedRequests) ??
+    toNumber(bucket.requestsUsed) ??
+    toNumber(bucket.includedRequestsUsed) ??
+    toNumber(bucket.premiumRequestsUsed) ??
+    toNumber(bucket.fastPremiumRequestsUsed);
+
+  const limit =
+    toNumber(bucket.maxRequestUsage) ??
+    toNumber(bucket.maxRequests) ??
+    toNumber(bucket.requestLimit) ??
+    toNumber(bucket.includedRequestLimit) ??
+    toNumber(bucket.premiumRequestLimit);
+
+  if (used === null && limit === null) return null;
+  return { used: used ?? 0, limit: limit ?? 0, source };
+}
+
+function pickBestTotals(candidates: RequestTotals[]): RequestTotals | null {
+  if (candidates.length === 0) return null;
+  const [best] = [...candidates].sort((a, b) => {
+    const aScore = Number(a.limit > 0) + Number(a.used > 0);
+    const bScore = Number(b.limit > 0) + Number(b.used > 0);
+    if (aScore !== bScore) return bScore - aScore;
+    if (a.limit !== b.limit) return b.limit - a.limit;
+    return b.used - a.used;
+  });
+  return best ?? null;
+}
+
+export function extractUsageTotals(usageRaw: unknown): RequestTotals {
+  const usage = asRecord(usageRaw);
+  if (!usage) {
+    apiLog("Usage payload is not an object; defaulting totals to 0/0");
+    return { used: 0, limit: 0, source: "none" };
+  }
+
+  const keys = Object.keys(usage);
+  apiLog(`Usage keys: ${keys.length > 0 ? keys.join(", ") : "(none)"}`);
+
+  const gpt4 = asRecord(usage["gpt-4"]);
+  const gpt4Totals = gpt4 ? extractBucketTotals(gpt4, "gpt-4") : null;
+
+  const dynamicCandidates: RequestTotals[] = [];
+  const rootTotals = extractBucketTotals(usage, "root");
+  if (rootTotals) dynamicCandidates.push(rootTotals);
+
+  for (const [key, value] of Object.entries(usage)) {
+    if (key === "gpt-4") continue;
+    const bucket = asRecord(value);
+    if (!bucket) continue;
+    const totals = extractBucketTotals(bucket, key);
+    if (totals) dynamicCandidates.push(totals);
+  }
+
+  const bestDynamic = pickBestTotals(dynamicCandidates);
+  if (!gpt4Totals && !bestDynamic) {
+    apiLog("Could not parse usage totals from payload; defaulting to 0/0");
+    return { used: 0, limit: 0, source: "none" };
+  }
+
+  if (gpt4Totals && !bestDynamic) {
+    apiLog(`Using usage bucket: ${gpt4Totals.source} (${gpt4Totals.used}/${gpt4Totals.limit})`);
+    if (gpt4Totals.used === 0 && gpt4Totals.limit === 0) {
+      return { used: 0, limit: 0, source: "none" };
+    }
+    return gpt4Totals;
+  }
+
+  if (!gpt4Totals && bestDynamic) {
+    apiLog(`Using usage bucket: ${bestDynamic.source} (${bestDynamic.used}/${bestDynamic.limit})`);
+    if (bestDynamic.used === 0 && bestDynamic.limit === 0) {
+      return { used: 0, limit: 0, source: "none" };
+    }
+    return bestDynamic;
+  }
+
+  if (gpt4Totals && bestDynamic) {
+    const chooseDynamic =
+      bestDynamic.limit > gpt4Totals.limit ||
+      (bestDynamic.limit === gpt4Totals.limit && bestDynamic.used > gpt4Totals.used);
+
+    const selected = chooseDynamic ? bestDynamic : gpt4Totals;
+    apiLog(`Using usage bucket: ${selected.source} (${selected.used}/${selected.limit})`);
+    if (selected.used === 0 && selected.limit === 0) {
+      return { used: 0, limit: 0, source: "none" };
+    }
+    return selected;
+  }
+
+  const chosen = gpt4Totals ?? bestDynamic;
+  if (chosen && chosen.used === 0 && chosen.limit === 0) {
+    apiLog("Legacy usage buckets are all zero; treating as unparsed");
+    return { used: 0, limit: 0, source: "none" };
+  }
+
+  return { used: 0, limit: 0, source: "none" };
+}
+
+function pickNumber(record: Record<string, unknown>, fields: string[]): NumberWithSource | null {
+  for (const field of fields) {
+    const value = toNumber(record[field]);
+    if (value !== null) {
+      return { value, source: field };
+    }
+  }
+  return null;
+}
+
+function extractOnDemandFromSummaryBlock(
+  block: Record<string, unknown> | null,
+  stripeOnDemandEnabled: boolean,
+): UsagePayload["onDemand"] {
+  if (!block || block.enabled !== true) {
+    return stripeOnDemandEnabled
+      ? { state: "unlimited", spendDollars: 0, limitDollars: null }
+      : { state: "disabled", spendDollars: 0, limitDollars: null };
+  }
+
+  const usedCents = toNumber(block.used) ?? 0;
+  const spendDollars = usedCents / 100;
+  const limitCents = toNumber(block.limit);
+
+  if (limitCents !== null && limitCents > 0) {
+    return { state: "limited", spendDollars, limitDollars: limitCents / 100 };
+  }
+
+  return { state: "unlimited", spendDollars, limitDollars: null };
+}
+
+function extractPoolUsageFromPlan(plan: Record<string, unknown>): UsagePayload["poolUsage"] {
+  const autoPercentUsed = toNumber(plan.autoPercentUsed);
+  const apiPercentUsed = toNumber(plan.apiPercentUsed);
+  const totalPercentUsed = toNumber(plan.totalPercentUsed);
+  if (autoPercentUsed === null && apiPercentUsed === null && totalPercentUsed === null) {
+    return null;
+  }
+  return {
+    autoPercentUsed: autoPercentUsed ?? 0,
+    apiPercentUsed: apiPercentUsed ?? 0,
+    totalPercentUsed: totalPercentUsed ?? 0,
+  };
+}
+
+export function extractUsageFromSummary(
+  summaryRaw: unknown,
+  stripeOnDemandEnabled: boolean,
+): UsagePayload | null {
+  const summary = asRecord(summaryRaw);
+  if (!summary) {
+    apiLog("usage-summary payload is not an object");
+    return null;
+  }
+
+  const individual = asRecord(summary.individualUsage);
+  const plan = individual ? asRecord(individual.plan) : null;
+  if (!plan || plan.enabled === false) {
+    apiLog("usage-summary: plan disabled or missing");
+    return null;
+  }
+
+  const used = toNumber(plan.used);
+  const limit = toNumber(plan.limit);
+  const breakdown = asRecord(plan.breakdown);
+  const breakdownUsed =
+    toNumber(breakdown?.included) ??
+    toNumber(breakdown?.total);
+  const breakdownLimit =
+    toNumber(breakdown?.total) ??
+    toNumber(breakdown?.included);
+
+  const resolvedUsed = used ?? breakdownUsed ?? 0;
+  const resolvedLimit = limit ?? breakdownLimit ?? 0;
+
+  if (resolvedUsed === 0 && resolvedLimit === 0) {
+    apiLog("usage-summary: no plan used/limit fields");
+    return null;
+  }
+
+  const individualOnDemand = individual ? asRecord(individual.onDemand) : null;
+  const teamUsage = asRecord(summary.teamUsage);
+  const teamOnDemand = teamUsage ? asRecord(teamUsage.onDemand) : null;
+  const onDemandBlock =
+    individualOnDemand?.enabled === true ? individualOnDemand : teamOnDemand;
+  const onDemand = extractOnDemandFromSummaryBlock(onDemandBlock, stripeOnDemandEnabled);
+
+  const billingCycleEnd = typeof summary.billingCycleEnd === "string" ? summary.billingCycleEnd : null;
+  const billingCycleStart = typeof summary.billingCycleStart === "string" ? summary.billingCycleStart : null;
+  const resetsAt = billingCycleEnd ?? (billingCycleStart ? nextMonth(billingCycleStart) : null);
+
+  return {
+    includedRequests: {
+      used: resolvedUsed,
+      limit: resolvedLimit,
+    },
+    onDemand,
+    poolUsage: extractPoolUsageFromPlan(plan),
+    resetsAt,
+    planInfo: null,
+  };
+}
+
+export function mergeTeamIncludedRequests(
+  usageTotals: RequestTotals | null,
+  memberUsed: NumberWithSource,
+  memberLimit: NumberWithSource,
+): { used: number; limit: number; usedSource: string; limitSource: string } {
+  const hasParsedUsage = usageTotals !== null && usageTotals.source !== "none";
+  const used = hasParsedUsage ? usageTotals.used : memberUsed.value;
+  const limit =
+    usageTotals !== null && usageTotals.limit > 0
+      ? usageTotals.limit
+      : memberLimit.value > 0
+        ? memberLimit.value
+        : hasParsedUsage
+          ? usageTotals.limit
+          : memberLimit.value;
+
+  const usedSource = hasParsedUsage
+    ? `usage.${usageTotals.source}.used`
+    : `member.${memberUsed.source}`;
+  const limitSource =
+    usageTotals !== null && usageTotals.limit > 0
+      ? `usage.${usageTotals.source}.limit`
+      : memberLimit.value > 0
+        ? `member.${memberLimit.source}`
+        : hasParsedUsage
+          ? `usage.${usageTotals.source}.limit`
+          : `member.${memberLimit.source}`;
+
+  return { used, limit, usedSource, limitSource };
+}
+
+export function extractTeamUsedRequests(member: Record<string, unknown>): NumberWithSource {
+  return (
+    pickNumber(member, [
+      "includedRequestsUsed",
+      "numRequests",
+      "requestsUsed",
+      "fastPremiumRequests",
+      "fastPremiumRequestsUsed",
+      "premiumRequestsUsed",
+      "requestCount",
+      "includedUsage",
+    ]) ?? { value: 0, source: "fallback:0" }
+  );
+}
+
+export function extractTeamRequestLimit(
+  member: Record<string, unknown>,
+  fallbackLimit: number,
+): NumberWithSource {
+  return (
+    pickNumber(member, [
+      "includedRequestLimit",
+      "maxRequestUsage",
+      "maxRequests",
+      "requestLimit",
+      "premiumRequestLimit",
+    ]) ?? {
+      value: fallbackLimit,
+      source: "setup.maxRequestUsage",
+    }
+  );
+}
+
+export function enrichUsageFromEvents(
+  data: UsagePayload,
+  events: UsageEvent[],
+  now = Date.now(),
+): UsagePayload {
+  if (data.includedRequests.limit > 0 && data.includedRequests.used > 0) {
+    return data;
+  }
+
+  const cutoff = getBillingCycleCutoff(data.resetsAt, now);
+  let includedUsed = 0;
+  let onDemandSpendCents = 0;
+
+  for (const event of events) {
+    if (event.timestamp < cutoff) continue;
+    if (event.kind === "Included") {
+      includedUsed += event.requests;
+    } else if (event.kind === "On-Demand") {
+      onDemandSpendCents += event.spendCents;
+    }
+  }
+
+  const cachedLimit = getCachedMaxRequestUsage();
+  const used = data.includedRequests.used > 0 ? data.includedRequests.used : Math.round(includedUsed);
+  const limit =
+    data.includedRequests.limit > 0
+      ? data.includedRequests.limit
+      : cachedLimit > 0
+        ? cachedLimit
+        : used > 0
+          ? used
+          : 0;
+
+  if (used === data.includedRequests.used && limit === data.includedRequests.limit) {
+    return data;
+  }
+
+  apiLog(`Enriched usage from events: ${used}/${limit} (events included reqs=${includedUsed.toFixed(1)})`);
+
+  const onDemand =
+    data.onDemand.state === "disabled" && onDemandSpendCents > 0
+      ? { state: "unlimited" as const, spendDollars: onDemandSpendCents / 100, limitDollars: null }
+      : data.onDemand;
+
+  return {
+    ...data,
+    includedRequests: { used, limit },
+    onDemand,
+  };
+}
+
+function parseEventKind(kind: string): string {
+  if (kind === "USAGE_EVENT_KIND_USAGE_BASED") return "On-Demand";
+  if (kind === "USAGE_EVENT_KIND_ERRORED_NOT_CHARGED") return "Errored";
+  if (kind === "USAGE_EVENT_KIND_ABORTED_NOT_CHARGED") return "Aborted";
+  return "Included";
+}
+
+export function parseUsageEvent(raw: unknown): UsageEvent | null {
+  const e = asRecord(raw);
+  if (!e) return null;
+
+  const tok = asRecord(e.tokenUsage) ?? {};
+  const inputTokens = toNumber(tok.inputTokens) ?? 0;
+  const outputTokens = toNumber(tok.outputTokens) ?? 0;
+  const cacheWriteTokens = toNumber(tok.cacheWriteTokens) ?? 0;
+  const cacheReadTokens = toNumber(tok.cacheReadTokens) ?? 0;
+  const totalTokens = inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens;
+
+  return {
+    timestamp: parseTimestamp(e.timestamp),
+    model: typeof e.model === "string" ? e.model : "unknown",
+    kind: parseEventKind(typeof e.kind === "string" ? e.kind : ""),
+    totalTokens,
+    requests: toNumber(e.requestsCosts) ?? toNumber(e.numRequests) ?? 1,
+    spendCents: toNumber(e.chargedCents) ?? 0,
+    maxMode: Boolean(e.maxMode),
+    inputTokens,
+    outputTokens,
+    cacheWriteTokens,
+    cacheReadTokens,
+    tokenCostCents: toNumber(tok.totalCents) ?? 0,
+    cursorTokenFee: toNumber(e.cursorTokenFee) ?? 0,
+    isTokenBasedCall: Boolean(e.isTokenBasedCall),
+    isHeadless: Boolean(e.isHeadless),
+    isChargeable: e.isChargeable !== false,
+  };
+}
+
+export { parseTimestamp } from "./cursor-api-utils";

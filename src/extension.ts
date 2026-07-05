@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import {
   configure,
+  enrichUsageFromEvents,
   fetchDailySpendByCategory,
   fetchUsageData,
   fetchUsageEvents,
@@ -23,6 +24,8 @@ import {
   type SortOrder,
   type UsageDuration,
 } from "./model-breakdown";
+import { formatModelLabel } from "./model-labels";
+import { formatStatusBarUsageText } from "./pool-usage";
 import {
   buildUsageByModelHeadingMarkdown,
   buildUsageOverviewMarkdown,
@@ -177,7 +180,7 @@ function buildModelBreakdownTableMarkdown(
   for (const row of rows) {
     lines.push(
       `  <tr>` +
-      `<td align="left">${escapeHtml(row.model)}</td>` +
+      `<td align="left">${escapeHtml(formatModelLabel(row.model))}</td>` +
       `<td align="right">${Math.round(row.requests)}</td>` +
       `<td align="right">${formatTokens(row.totalTokens)}</td>` +
       `<td align="right">${formatDollarsFromCents(row.spendCents)}</td>` +
@@ -222,17 +225,10 @@ function updateStatusBar(data: UsagePayload) {
   const premiumExhausted = includedRequests.used >= includedRequests.limit;
   const onDemandVisible = isOnDemandVisible(onDemand);
 
-  if (minimalMode) {
-    if (premiumExhausted && onDemandVisible) {
-      statusBarItem.text = `$(pulse) ${formatOnDemandStatus(onDemand)}`;
-    } else {
-      statusBarItem.text = `$(pulse) ${includedRequests.used}/${includedRequests.limit}`;
-    }
+  if (minimalMode && premiumExhausted && onDemandVisible) {
+    statusBarItem.text = `$(pulse) ${formatOnDemandStatus(onDemand)}`;
   } else {
-    const includedText = `${includedRequests.used}/${includedRequests.limit}`;
-    statusBarItem.text = onDemandVisible
-      ? `$(pulse) ${includedText} | ${formatOnDemandStatus(onDemand)}`
-      : `$(pulse) ${includedText}`;
+    statusBarItem.text = `$(pulse) ${formatStatusBarUsageText(data, { onDemandVisible })}`;
   }
 
   const tooltip = new vscode.MarkdownString();
@@ -245,12 +241,14 @@ function updateStatusBar(data: UsagePayload) {
   const barW = 150;
   let md = `### $(pulse) Cursor Usage\n\n`;
   md += buildUsageOverviewMarkdown(
-    { includedRequests, onDemand },
+    { includedRequests, onDemand, poolUsage: data.poolUsage, resetsAt: data.resetsAt },
     {
       markdown: (ratio) => progressBarMarkdown(ratio, barW),
       html: (ratio) => progressBarHtml(ratio, barW),
       divider: () => summaryDividerHtml(),
     },
+    Date.now(),
+    lastEvents ?? [],
   );
   md += `\n`;
 
@@ -317,9 +315,11 @@ async function updateUsage() {
     }
 
     if (data) {
-      lastData = data;
+      const events = eventsResult.status === "fulfilled" ? eventsResult.value : [];
+      const enriched = enrichUsageFromEvents(data, events, Date.now());
+      lastData = enriched;
       lastError = null;
-      updateStatusBar(data);
+      updateStatusBar(enriched);
     } else {
       lastError = "Could not fetch usage data";
       if (!lastData) {
@@ -363,18 +363,9 @@ async function showDetails() {
   }
 
   const { includedRequests, onDemand, resetsAt } = lastData;
-  const reqPct = includedRequests.limit > 0 ? Math.round((includedRequests.used / includedRequests.limit) * 100) : 0;
-  const spendRatio = getOnDemandRatio(onDemand);
-  const spendPct = spendRatio === null ? null : Math.round(spendRatio * 100);
   const onDemandVisible = isOnDemandVisible(onDemand);
 
-  let message = `Requests: ${includedRequests.used}/${includedRequests.limit} (${reqPct}%)`;
-  if (onDemandVisible) {
-    const spendText = onDemand.state === "unlimited"
-      ? `$${onDemand.spendDollars.toFixed(2)}`
-      : `$${onDemand.spendDollars.toFixed(2)}/$${(onDemand.limitDollars ?? 0).toFixed(2)} (${spendPct ?? 0}%)`;
-    message += ` | Spend: ${spendText}`;
-  }
+  let message = `Requests: ${formatStatusBarUsageText(lastData, { onDemandVisible })}`;
   if (resetsAt) message += ` | Resets: ${formatResetDate(resetsAt)}`;
 
   const action = await vscode.window.showInformationMessage(

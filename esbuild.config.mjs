@@ -1,10 +1,10 @@
-import { build } from "esbuild";
+import { build, context } from "esbuild";
 
 const isWatch = process.argv.includes("--watch");
 const isProd = process.argv.includes("--production");
 
 /** @type {import('esbuild').BuildOptions} */
-const config = {
+const extensionConfig = {
   entryPoints: ["src/extension.ts"],
   bundle: true,
   outfile: "dist/extension.js",
@@ -16,11 +16,29 @@ const config = {
   minify: isProd,
 };
 
+/** @type {import('esbuild').BuildOptions} */
+const dashboardConfig = {
+  entryPoints: ["media/dashboard/modules/entry.js"],
+  bundle: true,
+  outfile: "media/dashboard/dashboard.js",
+  format: "iife",
+  platform: "browser",
+  target: "es2020",
+  minify: isProd,
+};
+
+async function buildAll() {
+  await build(extensionConfig);
+  await build(dashboardConfig);
+  console.log("Build complete.");
+}
+
 if (isWatch) {
-  const ctx = await (await import("esbuild")).context(config);
-  await ctx.watch();
+  const extCtx = await context(extensionConfig);
+  const dashCtx = await context(dashboardConfig);
+  await extCtx.watch();
+  await dashCtx.watch();
   console.log("Watching for changes...");
 } else {
-  await build(config);
-  console.log("Build complete.");
+  await buildAll();
 }

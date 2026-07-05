@@ -135,7 +135,7 @@
   "license": "MIT",
   "publisher": "wrick17",
   "scripts": {
-    "build": "node esbuild.config.mjs --production",
+    "build": "node scripts/download-chart.mjs && node esbuild.config.mjs --production",
     "watch": "node esbuild.config.mjs --watch",
     "package": "bun run build && mkdir -p build && VERSION=$(node -p \"require('./package.json').version\") && bunx @vscode/vsce package --out \"build/cursor-usage-${VERSION}.vsix\"",
     "package:vsm": "bun run build && node scripts/prepare-vsm-package.mjs && VERSION=$(node -p \"require('./package.json').version\") && cd \"build/vsm-package\" && bunx @vscode/vsce package --out \"../cursor-usage-auto-${VERSION}.vsix\"",

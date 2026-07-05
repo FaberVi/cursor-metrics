@@ -13,6 +13,7 @@ describe("buildUsageOverviewMarkdown", () => {
       {
         includedRequests: { used: 500, limit: 500 },
         onDemand: { state: "limited", spendDollars: 66.89, limitDollars: 200 },
+        poolUsage: null,
       },
       progressBar,
     );
@@ -37,6 +38,7 @@ describe("buildUsageOverviewMarkdown", () => {
       {
         includedRequests: { used: 500, limit: 500 },
         onDemand: { state: "unlimited", spendDollars: 66.89, limitDollars: null },
+        poolUsage: null,
       },
       progressBar,
     );
@@ -61,6 +63,7 @@ describe("buildUsageOverviewMarkdown", () => {
       {
         includedRequests: { used: 42, limit: 500 },
         onDemand: { state: "disabled", spendDollars: 0, limitDollars: null },
+        poolUsage: null,
       },
       progressBar,
     );
@@ -72,6 +75,84 @@ describe("buildUsageOverviewMarkdown", () => {
     expect(markdown).not.toContain("<divider />");
     expect(markdown).not.toContain("8% used");
     expect(markdown).not.toContain("On-demand");
+  });
+
+  it("includes pool usage when provided", () => {
+    const markdown = buildUsageOverviewMarkdown(
+      {
+        includedRequests: { used: 500, limit: 500 },
+        onDemand: { state: "disabled", spendDollars: 0, limitDollars: null },
+        poolUsage: { autoPercentUsed: 46, apiPercentUsed: 4, totalPercentUsed: 31 },
+      },
+      progressBar,
+    );
+
+    expect(markdown).toContain("Included pool");
+    expect(markdown).toContain("31% total used");
+    expect(markdown).toContain("Auto");
+    expect(markdown).toContain("API");
+  });
+
+  it("includes today's suggested pace when pool usage and events are available", () => {
+    const now = Date.UTC(2026, 6, 5, 12, 0, 0);
+    const resetsAt = "2026-08-02T15:37:46.000Z";
+    const cycleStart = new Date(resetsAt);
+    cycleStart.setMonth(cycleStart.getMonth() - 1);
+    const events = [
+      {
+        timestamp: cycleStart.getTime() + 3_600_000,
+        model: "default",
+        kind: "Included",
+        totalTokens: 1000,
+        requests: 1,
+        spendCents: 100,
+        maxMode: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        tokenCostCents: 0,
+        cursorTokenFee: 0,
+        isTokenBasedCall: false,
+        isHeadless: false,
+        isChargeable: true,
+      },
+      {
+        timestamp: now - 3_600_000,
+        model: "default",
+        kind: "Included",
+        totalTokens: 1000,
+        requests: 1,
+        spendCents: 500,
+        maxMode: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        tokenCostCents: 0,
+        cursorTokenFee: 0,
+        isTokenBasedCall: false,
+        isHeadless: false,
+        isChargeable: true,
+      },
+    ];
+
+    const markdown = buildUsageOverviewMarkdown(
+      {
+        includedRequests: { used: 500, limit: 500 },
+        onDemand: { state: "disabled", spendDollars: 0, limitDollars: null },
+        poolUsage: { autoPercentUsed: 61.4, apiPercentUsed: 3.7, totalPercentUsed: 40.4 },
+        resetsAt,
+      },
+      progressBar,
+      now,
+      events,
+    );
+
+    expect(markdown).toContain("Daily budget");
+    expect(markdown).toContain("budget");
+    expect(markdown).not.toContain("Recommended pace");
+    expect(markdown).not.toContain("Today's suggested pace");
   });
 });
 

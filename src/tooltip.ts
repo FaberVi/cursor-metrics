@@ -1,6 +1,8 @@
-import type { UsagePayload } from "./cursor-api";
+import type { UsageEvent, UsagePayload } from "./cursor-api";
 import { getDurationLabel } from "./duration-options";
 import type { UsageDuration } from "./model-breakdown";
+import { buildPoolTodayPaceMarkdown, buildPoolUsageMarkdown } from "./pool-usage";
+import { buildPoolUsageSeries } from "./pool-usage-series";
 
 type IncludedRequestsUsage = UsagePayload["includedRequests"];
 type OnDemandUsage = UsagePayload["onDemand"];
@@ -98,11 +100,23 @@ function buildSummaryColumns(
 }
 
 export function buildUsageOverviewMarkdown(
-  data: Pick<UsagePayload, "includedRequests" | "onDemand">,
+  data: Pick<UsagePayload, "includedRequests" | "onDemand" | "poolUsage" | "resetsAt">,
   renderProgressBar: ProgressBarRenderer,
+  now = Date.now(),
+  events: UsageEvent[] = [],
 ): string {
-  const { includedRequests, onDemand } = data;
-  return buildSummaryTable(buildSummaryColumns(includedRequests, onDemand, renderProgressBar), renderProgressBar);
+  const { includedRequests, onDemand, poolUsage, resetsAt } = data;
+  let md = buildSummaryTable(buildSummaryColumns(includedRequests, onDemand, renderProgressBar), renderProgressBar);
+  if (poolUsage) {
+    md += buildPoolUsageMarkdown(poolUsage, renderProgressBar);
+    if (events.length > 0) {
+      const series = buildPoolUsageSeries(events, poolUsage, resetsAt ?? null, now);
+      if (series) {
+        md += buildPoolTodayPaceMarkdown(series.todayAutoPace, series.todayApiPace, renderProgressBar);
+      }
+    }
+  }
+  return md;
 }
 
 export function buildUsageByModelHeadingMarkdown(duration: UsageDuration): string {

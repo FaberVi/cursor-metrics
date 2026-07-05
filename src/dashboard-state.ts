@@ -1,5 +1,14 @@
 import type { DailySpendRow, UsageEvent, UsagePayload } from "./cursor-api";
+import { CARD_HELP } from "./card-help";
 import { getDurationCutoff, type UsageDuration } from "./model-breakdown";
+import {
+  buildPoolUsageSeries,
+  computeRecommendedPoolUsage,
+  projectPoolDepletion,
+  type PoolDepletionEstimate,
+  type PoolRecommendedUsage,
+  type PoolUsageSeries,
+} from "./pool-usage-series";
 
 export type ChartMetric = "spend" | "tokens" | "requests";
 export type UsageFilter = "all" | "included" | "ondemand";
@@ -22,7 +31,11 @@ export type DashboardState = {
   resetsAt: string | null;
   isTeamMember: boolean;
   quotaAwareEventDisplay: boolean;
+  poolUsageSeries: PoolUsageSeries | null;
+  poolDepletion: PoolDepletionEstimate | null;
+  poolRecommended: PoolRecommendedUsage | null;
   error: string | null;
+  cardHelp: typeof CARD_HELP;
 };
 
 const DAY_MS = 86_400_000;
@@ -59,15 +72,22 @@ export function buildDashboardState(
   now: number,
   quotaAwareEventDisplay = true,
 ): DashboardState {
+  const poolUsage = data?.poolUsage ?? null;
+  const resetsAt = data?.resetsAt ?? null;
+
   return {
     generatedAt: now,
     data,
     events,
     dailySpend,
-    resetsAt: data?.resetsAt ?? null,
+    resetsAt,
     isTeamMember,
     quotaAwareEventDisplay,
+    poolUsageSeries: poolUsage ? buildPoolUsageSeries(events, poolUsage, resetsAt, now) : null,
+    poolDepletion: poolUsage ? projectPoolDepletion(poolUsage, resetsAt, now) : null,
+    poolRecommended: poolUsage ? computeRecommendedPoolUsage(resetsAt, now) : null,
     error,
+    cardHelp: CARD_HELP,
   };
 }
 
@@ -188,5 +208,41 @@ export function summarizeRange(
     includedRequests,
     onDemandSpendDollars: onDemandSpendCents / 100,
     totalTokens,
+  };
+}
+
+export const DEFAULT_EVENTS_PAGE_SIZE = 50;
+export const EVENTS_PAGE_SIZES = [25, 50, 100, 200] as const;
+
+export type PaginatedList<T> = {
+  items: T[];
+  totalItems: number;
+  totalPages: number;
+  page: number;
+  pageSize: number;
+  startIndex: number;
+  endIndex: number;
+};
+
+export function paginateList<T>(
+  items: readonly T[],
+  page: number,
+  pageSize: number,
+): PaginatedList<T> {
+  const safePageSize = Math.max(1, pageSize);
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const startIndex = (safePage - 1) * safePageSize;
+  const endIndex = Math.min(startIndex + safePageSize, totalItems);
+
+  return {
+    items: items.slice(startIndex, endIndex),
+    totalItems,
+    totalPages,
+    page: safePage,
+    pageSize: safePageSize,
+    startIndex,
+    endIndex,
   };
 }

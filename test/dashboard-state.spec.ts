@@ -4,24 +4,41 @@ import {
   aggregateChartSeries,
   buildDashboardState,
   filterEventsForRange,
+  paginateList,
   summarizeRange,
 } from "../src/dashboard-state";
 
 const dayMs = 86_400_000;
 const now = Date.UTC(2026, 3, 20, 12, 0, 0);
 
+const baseEvent = {
+  spendCents: 0,
+  maxMode: false,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheWriteTokens: 0,
+  cacheReadTokens: 0,
+  tokenCostCents: 0,
+  cursorTokenFee: 0,
+  isTokenBasedCall: false,
+  isHeadless: false,
+  isChargeable: true,
+};
+
 const sampleData: UsagePayload = {
   includedRequests: { used: 100, limit: 500 },
   onDemand: { state: "limited", spendDollars: 12.5, limitDollars: 100 },
+  poolUsage: null,
+  planInfo: null,
   resetsAt: null,
 };
 
 const sampleEvents: UsageEvent[] = [
-  { timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 2000, requests: 2, spendCents: 0, maxMode: false },
-  { timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 3000, requests: 1.5, spendCents: 320, maxMode: true },
-  { timestamp: now - 2 * dayMs, model: "composer-2", kind: "Included", totalTokens: 500, requests: 4, spendCents: 0, maxMode: false },
-  { timestamp: now - 2 * dayMs, model: "composer-2", kind: "On-Demand", totalTokens: 100, requests: 0.6, spendCents: 50, maxMode: false },
-  { timestamp: now - 8 * dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 9999, requests: 9, spendCents: 0, maxMode: false },
+  { ...baseEvent, timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 2000, requests: 2 },
+  { ...baseEvent, timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 3000, requests: 1.5, spendCents: 320, maxMode: true },
+  { ...baseEvent, timestamp: now - 2 * dayMs, model: "composer-2", kind: "Included", totalTokens: 500, requests: 4 },
+  { ...baseEvent, timestamp: now - 2 * dayMs, model: "composer-2", kind: "On-Demand", totalTokens: 100, requests: 0.6, spendCents: 50 },
+  { ...baseEvent, timestamp: now - 8 * dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 9999, requests: 9 },
 ];
 
 describe("buildDashboardState", () => {
@@ -32,8 +49,12 @@ describe("buildDashboardState", () => {
     expect(state.events.length).toBe(5);
     expect(state.isTeamMember).toBeTrue();
     expect(state.quotaAwareEventDisplay).toBeTrue();
+    expect(state.poolUsageSeries).toBeNull();
+    expect(state.poolDepletion).toBeNull();
+    expect(state.poolRecommended).toBeNull();
     expect(state.error).toBeNull();
     expect(state.resetsAt).toBeNull();
+    expect(state.cardHelp.includedRequests).toContain("billing cycle");
   });
 
   it("propagates resetsAt from data", () => {
@@ -116,8 +137,8 @@ describe("aggregateChartSeries", () => {
 
   it("does not count chargedCents as spend while requests are included by default", () => {
     const events: UsageEvent[] = [
-      { timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 2000, requests: 2, spendCents: 450, maxMode: false },
-      { timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 3000, requests: 1.5, spendCents: 320, maxMode: true },
+      { ...baseEvent, timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 2000, requests: 2, spendCents: 450 },
+      { ...baseEvent, timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 3000, requests: 1.5, spendCents: 320, maxMode: true },
     ];
 
     const series = aggregateChartSeries(events, [], "7d", null, "spend", "all", now);
@@ -127,8 +148,8 @@ describe("aggregateChartSeries", () => {
 
   it("keeps included chargedCents in spend when quota-aware display is disabled", () => {
     const events: UsageEvent[] = [
-      { timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 2000, requests: 2, spendCents: 450, maxMode: false },
-      { timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 3000, requests: 1.5, spendCents: 320, maxMode: true },
+      { ...baseEvent, timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 2000, requests: 2, spendCents: 450 },
+      { ...baseEvent, timestamp: now - dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 3000, requests: 1.5, spendCents: 320, maxMode: true },
     ];
 
     const series = aggregateChartSeries(events, [], "7d", null, "spend", "all", now, false);
@@ -154,6 +175,34 @@ describe("aggregateChartSeries", () => {
     for (let i = 1; i < totals.length; i++) {
       expect(totals[i - 1]).toBeGreaterThanOrEqual(totals[i]!);
     }
+  });
+});
+
+describe("paginateList", () => {
+  const items = Array.from({ length: 105 }, (_, i) => i + 1);
+
+  it("returns the requested page slice", () => {
+    const page = paginateList(items, 2, 50);
+    expect(page.items).toEqual(Array.from({ length: 50 }, (_, i) => i + 51));
+    expect(page.totalItems).toBe(105);
+    expect(page.totalPages).toBe(3);
+    expect(page.page).toBe(2);
+    expect(page.startIndex).toBe(50);
+    expect(page.endIndex).toBe(100);
+  });
+
+  it("clamps page when out of range", () => {
+    const page = paginateList(items, 99, 50);
+    expect(page.page).toBe(3);
+    expect(page.items.length).toBe(5);
+  });
+
+  it("handles empty lists", () => {
+    const page = paginateList([], 5, 50);
+    expect(page.items).toEqual([]);
+    expect(page.totalItems).toBe(0);
+    expect(page.totalPages).toBe(1);
+    expect(page.page).toBe(1);
   });
 });
 
