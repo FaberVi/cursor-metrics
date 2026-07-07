@@ -10,10 +10,20 @@
   ui,
   vscode,
 } from "./core.js";
-import { applyStaticTranslations, getDateLocale, t } from "./i18n.js";
+import {
+  applyActivityTab,
+  applyConversationMessages,
+  bindConversationHandlers,
+  closeConversationDetail,
+  renderConversationsTable,
+  updateArchiveNote,
+  updatePreviewLoading,
+  updatePreviewStatus,
+  syncDashboardPrefs,
+} from "./conversations.js";
 import { renderChart } from "./chart.js";
 import { renderPoolChart } from "./pool-chart.js";
-import { setActiveRangeButton } from "./format.js";
+import { setActiveRangeButton, formatUpdatedAt } from "./format.js";
 import { renderSummaryCards } from "./summary.js";
 import {
   applyTeamMemberConstraints,
@@ -25,11 +35,21 @@ import {
   showError,
   showEventDetail,
 } from "./tables.js";
+import { applyStaticTranslations, t } from "./i18n.js";
+
+function closeActivityDetail() {
+  closeEventDetail();
+  closeConversationDetail();
+}
 
 function renderAll() {
   if (!refs.state) return;
+  if (ui.currencySelect) {
+    local.currency = ui.currencySelect.value === "eur" ? "eur" : "usd";
+    persistLocal();
+  }
   applyStaticTranslations();
-  closeEventDetail();
+  closeActivityDetail();
   applySectionState();
   setActiveRangeButton();
   ui.usageFilter.value = local.usageFilter;
@@ -40,9 +60,11 @@ function renderAll() {
   renderPoolChart();
   renderBreakdown();
   renderTable();
+  renderConversationsTable();
+  updateArchiveNote();
+  applyActivityTab();
   showError(refs.state.error);
-  ui.lastUpdated.textContent =
-    t("updated") + " " + new Date(refs.state.generatedAt).toLocaleTimeString(getDateLocale());
+  ui.lastUpdated.textContent = formatUpdatedAt(refs.state.generatedAt);
 }
 
 ui.rangeSelector.addEventListener("click", (e) => {
@@ -51,6 +73,7 @@ ui.rangeSelector.addEventListener("click", (e) => {
   local.range = btn.dataset.range;
   resetEventsPage();
   persistLocal();
+  syncDashboardPrefs();
   renderAll();
 });
 
@@ -58,6 +81,7 @@ ui.usageFilter.addEventListener("change", () => {
   local.usageFilter = ui.usageFilter.value;
   resetEventsPage();
   persistLocal();
+  syncDashboardPrefs();
   renderChart();
   renderBreakdown();
   renderTable();
@@ -80,7 +104,7 @@ ui.tableHead.addEventListener("click", (e) => {
     local.sortOrder = key === "model" || key === "kind" ? "asc" : "desc";
   }
   resetEventsPage();
-  closeEventDetail();
+  closeActivityDetail();
   persistLocal();
   renderTable();
 });
@@ -120,6 +144,19 @@ if (ui.langSelect) {
     if (next !== "en" && next !== "it") return;
     local.locale = next;
     persistLocal();
+    vscode.postMessage({ type: "setLocale", locale: next });
+    renderAll();
+  });
+}
+
+if (ui.currencySelect) {
+  ui.currencySelect.addEventListener("change", () => {
+    const next = ui.currencySelect.value;
+    if (next !== "usd" && next !== "eur") return;
+    local.currency = next;
+    persistLocal();
+    vscode.postMessage({ type: "setCurrency", currency: next });
+    applyStaticTranslations();
     renderAll();
   });
 }
@@ -168,23 +205,54 @@ document.querySelectorAll(".section-title-row[data-toggle-section]").forEach((ro
 });
 
 if (ui.eventDetailClose) {
-  ui.eventDetailClose.addEventListener("click", closeEventDetail);
+  ui.eventDetailClose.addEventListener("click", closeActivityDetail);
 }
 if (ui.eventDetailOverlay) {
   ui.eventDetailOverlay.addEventListener("click", (e) => {
-    if (e.target === ui.eventDetailOverlay) closeEventDetail();
+    if (e.target === ui.eventDetailOverlay) closeActivityDetail();
   });
 }
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && ui.eventDetailOverlay && !ui.eventDetailOverlay.classList.contains("hidden")) {
-    closeEventDetail();
+    closeActivityDetail();
   }
 });
 
 window.addEventListener("message", (event) => {
   const msg = event.data;
   if (!msg || typeof msg !== "object") return;
-  if (msg.type === "state") {
+  if (msg.type === "init" && (msg.locale === "en" || msg.locale === "it")) {
+    local.locale = msg.locale;
+    persistLocal();
+    applyStaticTranslations();
+    if (refs.state) renderAll();
+  } else if (msg.type === "initCurrency" && (msg.currency === "usd" || msg.currency === "eur")) {
+    local.currency = msg.currency;
+    persistLocal();
+    applyStaticTranslations();
+    if (refs.state) renderAll();
+  } else if (msg.type === "initPreview" && typeof msg.enabled === "boolean") {
+    local.conversationPreview = msg.enabled;
+    applyActivityTab();
+    if (refs.state && local.activityTab === "conversations") renderConversationsTable();
+  } else if (msg.type === "previewLoading") {
+    updatePreviewLoading(!!msg.on);
+  } else if (msg.type === "previewStatus") {
+    updatePreviewLoading(false);
+    updatePreviewStatus(msg);
+    if (refs.state && local.activityTab === "conversations") renderConversationsTable();
+  } else if (msg.type === "conversationMessages" && typeof msg.conversationId === "string") {
+    applyConversationMessages(msg.conversationId, msg.messages, msg.error);
+  } else if (msg.type === "state") {
+    if (msg.locale === "en" || msg.locale === "it") {
+      local.locale = msg.locale;
+      if (ui.langSelect) ui.langSelect.value = msg.locale;
+    }
+    if (msg.currency === "usd" || msg.currency === "eur") {
+      local.currency = msg.currency;
+      if (ui.currencySelect) ui.currencySelect.value = msg.currency;
+    }
+    persistLocal();
     setState(msg.state);
     renderAll();
   } else if (msg.type === "loading") {
@@ -195,4 +263,7 @@ window.addEventListener("message", (event) => {
 
 applyStaticTranslations();
 applySectionState();
+applyActivityTab();
+bindConversationHandlers(vscode);
 vscode.postMessage({ type: "ready" });
+syncDashboardPrefs();

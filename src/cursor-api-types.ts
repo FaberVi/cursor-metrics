@@ -35,6 +35,35 @@ export type UsageEvent = {
   isTokenBasedCall: boolean;
   isHeadless: boolean;
   isChargeable: boolean;
+  conversationId: string | null;
+};
+
+export type ConversationSummary = {
+  conversationId: string | null;
+  label: string;
+  title: string | null;
+  firstTimestamp: number;
+  lastTimestamp: number;
+  totalTokens: number;
+  requests: number;
+  spendCents: number;
+  eventCount: number;
+  models: string[];
+  kinds: string[];
+};
+
+export type ConversationRow = ConversationSummary & {
+  events: UsageEvent[];
+  modelsLabel: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  createdAt: string | null;
+  model: string | null;
+  modelEstimated?: boolean;
 };
 
 export type DailySpendRow = {

@@ -36,6 +36,8 @@ export type DashboardState = {
   poolRecommended: PoolRecommendedUsage | null;
   error: string | null;
   cardHelp: typeof CARD_HELP;
+  conversationTitles: Record<string, string>;
+  storedEventCount: number;
 };
 
 const DAY_MS = 86_400_000;
@@ -71,6 +73,8 @@ export function buildDashboardState(
   error: string | null,
   now: number,
   quotaAwareEventDisplay = true,
+  conversationTitles: Record<string, string> = {},
+  storedEventCount = 0,
 ): DashboardState {
   const poolUsage = data?.poolUsage ?? null;
   const resetsAt = data?.resetsAt ?? null;
@@ -88,6 +92,8 @@ export function buildDashboardState(
     poolRecommended: poolUsage ? computeRecommendedPoolUsage(resetsAt, now) : null,
     error,
     cardHelp: CARD_HELP,
+    conversationTitles,
+    storedEventCount,
   };
 }
 
@@ -100,6 +106,16 @@ export function filterEventsForRange(
 ): UsageEvent[] {
   const cutoff = getDurationCutoff(range, resetAtIso, now);
   return events.filter((e) => e.timestamp >= cutoff && matchesUsageFilter(e, usageFilter));
+}
+
+export function filterDashboardEvents(
+  events: UsageEvent[],
+  prefs: { range: UsageDuration; usageFilter: UsageFilter } | null,
+  resetAtIso: string | null,
+  now: number,
+): UsageEvent[] {
+  if (!prefs) return events;
+  return filterEventsForRange(events, prefs.range, resetAtIso, prefs.usageFilter, now);
 }
 
 function buildDayBuckets(cutoff: number, now: number): number[] {

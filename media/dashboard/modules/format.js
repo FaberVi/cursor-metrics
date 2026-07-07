@@ -35,15 +35,67 @@ export function formatTokens(n) {
   return String(Math.round(n));
 }
 
+/** Keep in sync with src/dashboard-locale.ts DEFAULT_EUR_USD_RATE */
+export const DEFAULT_EUR_USD_RATE = 0.92;
+
+export function getActiveCurrency() {
+  const selected = ui.currencySelect?.value;
+  if (selected === "eur" || selected === "usd") return selected;
+  return local.currency === "eur" ? "eur" : "usd";
+}
+
+export function formatMoney(amountUsd, options = {}) {
+  const locale = getDateLocale();
+  const minFrac = options.minimumFractionDigits ?? 2;
+  const maxFrac = options.maximumFractionDigits ?? 2;
+  if (getActiveCurrency() === "eur") {
+    const eur = (amountUsd || 0) * DEFAULT_EUR_USD_RATE;
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: minFrac,
+      maximumFractionDigits: maxFrac,
+    }).format(eur);
+  }
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: minFrac,
+    maximumFractionDigits: maxFrac,
+  }).format(amountUsd || 0);
+}
+
 export function formatDollars(n) {
-  return "$" + (n || 0).toFixed(2);
+  return formatMoney(n);
+}
+
+export function formatCents(cents) {
+  if (!Number.isFinite(cents) || cents === 0) return formatMoney(0);
+  const dollars = cents / 100;
+  if (dollars > 0 && dollars < 1) {
+    return formatMoney(dollars, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  }
+  return formatMoney(dollars);
+}
+
+export function formatPlanPriceText(text) {
+  if (!text || typeof text !== "string" || getActiveCurrency() !== "eur") return text;
+  return text.replace(/\$(\d+(?:\.\d{1,2})?)/g, (_, raw) => formatMoney(Number(raw)));
+}
+
+export function toCsvMoney(amountUsd) {
+  if (!Number.isFinite(amountUsd)) return "";
+  if (getActiveCurrency() === "eur") return (amountUsd * DEFAULT_EUR_USD_RATE).toFixed(4);
+  return amountUsd.toFixed(4);
 }
 
 export function toMillis(ts) {
   if (typeof ts === "number") return ts;
   if (typeof ts === "string" && ts !== "") {
     const n = Number(ts);
-    return Number.isFinite(n) ? n : NaN;
+    if (Number.isFinite(n)) return n;
+    const parsed = Date.parse(ts);
+    return Number.isFinite(parsed) ? parsed : NaN;
   }
   return NaN;
 }
@@ -51,7 +103,7 @@ export function toMillis(ts) {
 export function formatDateTime(ts) {
   const d = new Date(toMillis(ts));
   if (Number.isNaN(d.getTime())) return "\u2014";
-  return d.toLocaleString("en-US", {
+  return d.toLocaleString(getDateLocale(), {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -62,7 +114,7 @@ export function formatDateTime(ts) {
 export function formatFullDateTime(ts) {
   const d = new Date(toMillis(ts));
   if (Number.isNaN(d.getTime())) return "\u2014";
-  return d.toLocaleString("en-US", {
+  return d.toLocaleString(getDateLocale(), {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -78,10 +130,21 @@ export function formatTokenCount(n) {
   return Math.round(n).toLocaleString();
 }
 
-export function formatCents(cents) {
-  if (!Number.isFinite(cents) || cents === 0) return "$0.00";
-  const dollars = cents / 100;
-  return "$" + dollars.toFixed(dollars >= 1 ? 2 : 4);
+export function formatPerPage(size) {
+  return t("perPage").replace("{size}", String(size));
+}
+
+export function formatUpdatedAt(isoOrMs) {
+  const time = new Date(isoOrMs).toLocaleTimeString(getDateLocale(), {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: local.locale !== "it",
+  });
+  if (local.locale === "it") {
+    return t("updated") + " alle " + time;
+  }
+  return t("updated") + " " + time;
 }
 
 export function tokenField(event, key) {

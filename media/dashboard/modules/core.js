@@ -19,9 +19,21 @@ export const ui = {
   breakdownHead: document.querySelector("#breakdown-table thead"),
   breakdownRangeLabel: document.getElementById("breakdown-range-label"),
   pagination: document.getElementById("pagination"),
+  conversationsBody: document.querySelector("#conversations-table tbody"),
+  conversationsHead: document.querySelector("#conversations-table thead"),
+  conversationsPagination: document.getElementById("conversations-pagination"),
+  eventsPanel: document.getElementById("events-panel"),
+  conversationsPanel: document.getElementById("conversations-panel"),
+  activityTabs: document.querySelectorAll(".activity-tab"),
+  activitySectionTitle: document.getElementById("activity-section-title"),
+  activitySectionToggle: document.getElementById("activity-section-toggle"),
+  conversationPreviewBtn: document.getElementById("conversation-preview-btn"),
+  previewStatus: document.getElementById("preview-status"),
+  archiveNote: document.getElementById("archive-note"),
   planBanner: document.getElementById("plan-banner"),
   refreshBtn: document.getElementById("refresh-btn"),
   langSelect: document.getElementById("lang-select"),
+  currencySelect: document.getElementById("currency-select"),
   exportBtn: document.getElementById("export-csv"),
   lastUpdated: document.getElementById("last-updated"),
   errorBanner: document.getElementById("error-banner"),
@@ -36,6 +48,7 @@ const persisted = vscode.getState() || {};
 const browserLocale = typeof navigator !== "undefined" && navigator.language?.startsWith("it") ? "it" : "en";
 export const local = {
   locale: persisted.locale === "it" || persisted.locale === "en" ? persisted.locale : browserLocale,
+  currency: persisted.currency === "eur" || persisted.currency === "usd" ? persisted.currency : "usd",
   range: persisted.range || "billingCycle",
   usageFilter: persisted.usageFilter || "all",
   metric: persisted.metric || "tokens",
@@ -53,6 +66,14 @@ export const local = {
   eventsPageSize: EVENTS_PAGE_SIZES.includes(persisted.eventsPageSize)
     ? persisted.eventsPageSize
     : DEFAULT_EVENTS_PAGE_SIZE,
+  activityTab: persisted.activityTab === "conversations" ? "conversations" : "events",
+  conversationPreview: false,
+  conversationsPage: Math.max(1, persisted.conversationsPage || 1),
+  conversationsPageSize: EVENTS_PAGE_SIZES.includes(persisted.conversationsPageSize)
+    ? persisted.conversationsPageSize
+    : DEFAULT_EVENTS_PAGE_SIZE,
+  conversationSortKey: persisted.conversationSortKey || "lastTimestamp",
+  conversationSortOrder: persisted.conversationSortOrder || "desc",
 };
 
 export const refs = {
@@ -61,6 +82,7 @@ export const refs = {
   poolChart: null,
   poolPaceChart: null,
   selectedEventIdx: null,
+  selectedConversationId: null,
 };
 
 export function setState(next) {
@@ -113,6 +135,7 @@ export const PALETTE = [
 export function persistLocal() {
   vscode.setState({
     locale: local.locale,
+    currency: local.currency,
     range: local.range,
     usageFilter: local.usageFilter,
     metric: local.metric,
@@ -123,6 +146,11 @@ export function persistLocal() {
     sectionOpen: local.sectionOpen,
     eventsPage: local.eventsPage,
     eventsPageSize: local.eventsPageSize,
+    activityTab: local.activityTab,
+    conversationsPage: local.conversationsPage,
+    conversationsPageSize: local.conversationsPageSize,
+    conversationSortKey: local.conversationSortKey,
+    conversationSortOrder: local.conversationSortOrder,
   });
 }
 

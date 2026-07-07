@@ -362,6 +362,12 @@ export function parseUsageEvent(raw: unknown): UsageEvent | null {
     isTokenBasedCall: Boolean(e.isTokenBasedCall),
     isHeadless: Boolean(e.isHeadless),
     isChargeable: e.isChargeable !== false,
+    conversationId:
+      typeof e.conversationId === "string"
+      && e.conversationId.trim() !== ""
+      && e.conversationId !== "null"
+        ? e.conversationId.trim()
+        : null,
   };
 }
 

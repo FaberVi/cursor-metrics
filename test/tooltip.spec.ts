@@ -16,6 +16,7 @@ describe("buildUsageOverviewMarkdown", () => {
         poolUsage: null,
       },
       progressBar,
+      "en",
     );
 
     expect(markdown).toContain("<td><sub>Included</sub></td>");
@@ -33,6 +34,23 @@ describe("buildUsageOverviewMarkdown", () => {
     expect(markdown).not.toContain("On-Demand Spend");
   });
 
+  it("renders on-demand amounts in EUR when currency is eur", () => {
+    const markdown = buildUsageOverviewMarkdown(
+      {
+        includedRequests: { used: 500, limit: 500 },
+        onDemand: { state: "limited", spendDollars: 66.89, limitDollars: 200 },
+        poolUsage: null,
+      },
+      progressBar,
+      "en",
+      Date.now(),
+      [],
+      "eur",
+    );
+
+    expect(markdown).toContain("<strong>€61.54 / €184.00</strong>");
+  });
+
   it("renders unlimited copy on the bottom row so the columns stay aligned", () => {
     const markdown = buildUsageOverviewMarkdown(
       {
@@ -41,6 +59,7 @@ describe("buildUsageOverviewMarkdown", () => {
         poolUsage: null,
       },
       progressBar,
+      "en",
     );
 
     expect(markdown).toContain("<td><sub>Included</sub></td>");
@@ -66,6 +85,7 @@ describe("buildUsageOverviewMarkdown", () => {
         poolUsage: null,
       },
       progressBar,
+      "en",
     );
 
     expect(markdown).toContain("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">");
@@ -85,6 +105,7 @@ describe("buildUsageOverviewMarkdown", () => {
         poolUsage: { autoPercentUsed: 46, apiPercentUsed: 4, totalPercentUsed: 31 },
       },
       progressBar,
+      "en",
     );
 
     expect(markdown).toContain("Included pool");
@@ -145,6 +166,7 @@ describe("buildUsageOverviewMarkdown", () => {
         resetsAt,
       },
       progressBar,
+      "en",
       now,
       events,
     );
@@ -158,9 +180,24 @@ describe("buildUsageOverviewMarkdown", () => {
 
 describe("buildUsageByModelHeadingMarkdown", () => {
   it("includes a Change link that routes to the duration setting", () => {
-    const markdown = buildUsageByModelHeadingMarkdown("billingCycle");
+    const markdown = buildUsageByModelHeadingMarkdown("billingCycle", "en");
 
     expect(markdown).toContain("**Usage by Model** *(Current Billing Cycle)*");
     expect(markdown).toContain("[Change](command:cursor-usage.openDurationSetting)");
+  });
+
+  it("renders Italian labels when locale is it", () => {
+    const markdown = buildUsageOverviewMarkdown(
+      {
+        includedRequests: { used: 42, limit: 500 },
+        onDemand: { state: "disabled", spendDollars: 0, limitDollars: null },
+        poolUsage: null,
+      },
+      progressBar,
+      "it",
+    );
+
+    expect(markdown).toContain("<sub>Incluso</sub>");
+    expect(markdown).not.toContain("<sub>Included</sub>");
   });
 });

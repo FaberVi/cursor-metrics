@@ -136,12 +136,17 @@ label select { color: var(--input-fg); }
   font-size: 11px;
   color: var(--muted);
 }
-.lang-select {
+.lang-select,
+.header-select {
   min-width: 58px;
   padding-top: 4px;
   padding-bottom: 4px;
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+#currency-select {
+  min-width: 88px;
 }
 
 .summary-cards {

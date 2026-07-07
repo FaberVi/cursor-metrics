@@ -8,7 +8,7 @@ const extensionConfig = {
   entryPoints: ["src/extension.ts"],
   bundle: true,
   outfile: "dist/extension.js",
-  external: ["vscode"],
+  external: ["vscode", "sql.js"],
   format: "cjs",
   platform: "node",
   target: "node18",
@@ -25,6 +25,7 @@ const dashboardConfig = {
   platform: "browser",
   target: "es2020",
   minify: isProd,
+  loader: { ".ts": "ts" },
 };
 
 async function buildAll() {

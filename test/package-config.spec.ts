@@ -52,11 +52,12 @@ describe("package configuration", () => {
     const vscodeIgnore = readFileSync(".vscodeignore", "utf-8").split(/\r?\n/);
     const esbuildConfig = readFileSync("esbuild.config.mjs", "utf-8");
 
-    expect(packageJson.dependencies).toBeUndefined();
+    expect(packageJson.dependencies).toEqual({ "sql.js": "^1.14.1" });
     expect(packageJson.scripts.package).not.toContain("--no-dependencies");
     expect(packageJson.scripts["package:vsm"]).not.toContain("--no-dependencies");
     expect(vscodeIgnore).toContain("node_modules/");
+    expect(vscodeIgnore).toContain("!node_modules/sql.js/");
     expect(vscodeIgnore).toContain("node-compile-cache/");
-    expect(esbuildConfig).toContain('external: ["vscode"]');
+    expect(esbuildConfig).toContain('"sql.js"');
   });
 });

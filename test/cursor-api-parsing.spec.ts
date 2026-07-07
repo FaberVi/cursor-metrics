@@ -183,6 +183,7 @@ describe("parseUsageEvent", () => {
       isTokenBasedCall: true,
       isHeadless: false,
       isChargeable: true,
+      conversationId: null,
     });
   });
 
@@ -207,6 +208,7 @@ describe("parseUsageEvent", () => {
     expect(parsed!.totalTokens).toBe(
       parsed!.inputTokens + parsed!.outputTokens + parsed!.cacheWriteTokens + parsed!.cacheReadTokens,
     );
+    expect(parsed!.conversationId).toBe("b1992beb-b50f-4b7d-aaff-af4e0ef47e36");
   });
 });
 

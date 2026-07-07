@@ -12,6 +12,7 @@ const baseUsageEvent = {
   isTokenBasedCall: false,
   isHeadless: false,
   isChargeable: true,
+  conversationId: null,
 } satisfies Omit<UsageEvent, "timestamp" | "model" | "kind" | "totalTokens" | "requests">;
 
 export function usageEvent(

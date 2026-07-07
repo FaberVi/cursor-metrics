@@ -28,6 +28,7 @@ const baseEvent = {
   isTokenBasedCall: false,
   isHeadless: false,
   isChargeable: true,
+  conversationId: null,
 };
 
 const poolUsage: NonNullable<UsagePayload["poolUsage"]> = {

@@ -1,5 +1,6 @@
 export const FETCH_TIMEOUT_MS = 15_000;
 export const MAX_USAGE_EVENT_PAGES = 10;
+export const MAX_STORE_SYNC_PAGES = 100;
 
 export function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;

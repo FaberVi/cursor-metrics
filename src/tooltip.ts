@@ -1,5 +1,7 @@
 import type { UsageEvent, UsagePayload } from "./cursor-api";
-import { getDurationLabel } from "./duration-options";
+import type { DashboardCurrency, DashboardLocale } from "./dashboard-locale";
+import { formatOnDemandSpend } from "./currency-format";
+import { getDurationLabel, t, tf } from "./i18n";
 import type { UsageDuration } from "./model-breakdown";
 import { buildPoolTodayPaceMarkdown, buildPoolUsageMarkdown } from "./pool-usage";
 import { buildPoolUsageSeries } from "./pool-usage-series";
@@ -31,11 +33,18 @@ function formatIncludedValue(includedRequests: IncludedRequestsUsage): string {
   return `${includedRequests.used} / ${includedRequests.limit}`;
 }
 
-function formatOnDemandValue(onDemand: OnDemandUsage): string {
-  if (onDemand.state === "unlimited") {
-    return `$${onDemand.spendDollars.toFixed(2)}`;
-  }
-  return `$${onDemand.spendDollars.toFixed(2)} / $${(onDemand.limitDollars ?? 0).toFixed(2)}`;
+function formatOnDemandValue(
+  onDemand: OnDemandUsage,
+  currency: DashboardCurrency,
+  locale: DashboardLocale,
+): string {
+  return formatOnDemandSpend(
+    onDemand.spendDollars,
+    onDemand.limitDollars,
+    onDemand.state,
+    currency,
+    locale,
+  );
 }
 
 function buildSummaryTable(columns: SummaryColumn[], renderProgressBar: ProgressBarRenderer): string {
@@ -64,10 +73,12 @@ function buildSummaryColumns(
   includedRequests: IncludedRequestsUsage,
   onDemand: OnDemandUsage,
   renderProgressBar: ProgressBarRenderer,
+  locale: DashboardLocale,
+  currency: DashboardCurrency,
 ): SummaryColumn[] {
   const reqRatio = includedRequests.limit > 0 ? includedRequests.used / includedRequests.limit : 0;
   const includedColumn: SummaryColumn = {
-    label: "Included",
+    label: t(locale, "included"),
     value: formatIncludedValue(includedRequests),
     footer: renderProgressBar.html(reqRatio),
   };
@@ -80,9 +91,9 @@ function buildSummaryColumns(
     return [
       includedColumn,
       {
-        label: "On-demand",
-        value: formatOnDemandValue(onDemand),
-        footer: "<sub>Unlimited</sub>",
+        label: t(locale, "onDemand"),
+        value: formatOnDemandValue(onDemand, currency, locale),
+        footer: `<sub>${t(locale, "unlimited")}</sub>`,
       },
     ];
   }
@@ -92,9 +103,11 @@ function buildSummaryColumns(
   return [
     includedColumn,
     {
-      label: "On-demand",
-      value: formatOnDemandValue(onDemand),
-      footer: spendRatio === null ? "<sub>Spend unavailable</sub>" : renderProgressBar.html(spendRatio),
+      label: t(locale, "onDemand"),
+      value: formatOnDemandValue(onDemand, currency, locale),
+      footer: spendRatio === null
+        ? `<sub>${t(locale, "spendUnavailable")}</sub>`
+        : renderProgressBar.html(spendRatio),
     },
   ];
 }
@@ -102,23 +115,28 @@ function buildSummaryColumns(
 export function buildUsageOverviewMarkdown(
   data: Pick<UsagePayload, "includedRequests" | "onDemand" | "poolUsage" | "resetsAt">,
   renderProgressBar: ProgressBarRenderer,
+  locale: DashboardLocale,
   now = Date.now(),
   events: UsageEvent[] = [],
+  currency: DashboardCurrency = "usd",
 ): string {
   const { includedRequests, onDemand, poolUsage, resetsAt } = data;
-  let md = buildSummaryTable(buildSummaryColumns(includedRequests, onDemand, renderProgressBar), renderProgressBar);
+  let md = buildSummaryTable(
+    buildSummaryColumns(includedRequests, onDemand, renderProgressBar, locale, currency),
+    renderProgressBar,
+  );
   if (poolUsage) {
-    md += buildPoolUsageMarkdown(poolUsage, renderProgressBar);
+    md += buildPoolUsageMarkdown(poolUsage, renderProgressBar, locale);
     if (events.length > 0) {
       const series = buildPoolUsageSeries(events, poolUsage, resetsAt ?? null, now);
       if (series) {
-        md += buildPoolTodayPaceMarkdown(series.todayAutoPace, series.todayApiPace, renderProgressBar);
+        md += buildPoolTodayPaceMarkdown(series.todayAutoPace, series.todayApiPace, renderProgressBar, locale);
       }
     }
   }
   return md;
 }
 
-export function buildUsageByModelHeadingMarkdown(duration: UsageDuration): string {
-  return `**Usage by Model** *(${getDurationLabel(duration)})* &nbsp;[Change](command:${OPEN_DURATION_SETTING_COMMAND})\n\n`;
+export function buildUsageByModelHeadingMarkdown(duration: UsageDuration, locale: DashboardLocale): string {
+  return `**${t(locale, "usageByModel")}** *(${getDurationLabel(duration, locale)})* &nbsp;[${t(locale, "change")}](command:${OPEN_DURATION_SETTING_COMMAND})\n\n`;
 }

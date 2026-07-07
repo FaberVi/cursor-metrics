@@ -17,6 +17,7 @@ describe("buildPoolUsageMarkdown", () => {
     const markdown = buildPoolUsageMarkdown(
       { autoPercentUsed: 46.1, apiPercentUsed: 3.7, totalPercentUsed: 30.8 },
       { html: (ratio) => `<bar:${ratio.toFixed(2)}>` },
+      "en",
     );
 
     expect(markdown).toContain("30.8% total used");
@@ -52,5 +53,17 @@ describe("formatStatusBarUsageText", () => {
     expect(formatStatusBarUsageText(base, { onDemandVisible: false })).toBe(
       "2000/2000, 33% Auto, 12% API",
     );
+  });
+
+  it("formats on-demand spend in EUR", () => {
+    expect(
+      formatStatusBarUsageText(
+        {
+          ...base,
+          onDemand: { state: "limited", spendDollars: 10, limitDollars: 50 },
+        },
+        { onDemandVisible: true, currency: "eur", locale: "en" },
+      ),
+    ).toBe("2000/2000, 33% Auto, 12% API, €9.20/€46.00");
   });
 });

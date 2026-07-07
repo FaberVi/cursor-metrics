@@ -11,7 +11,7 @@
   backdrop-filter: blur(2px);
 }
 .event-detail-panel {
-  width: min(520px, 100%);
+  width: min(760px, 100%);
   max-height: min(85vh, 720px);
   overflow: hidden;
   display: flex;
@@ -145,3 +145,92 @@
   background: var(--card-2);
 }
 .detail-flag.on { color: var(--fg); border-color: var(--border-strong); }
+
+.detail-events-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.detail-events-table th,
+.detail-events-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.detail-events-table th.num,
+.detail-events-table td.num {
+  text-align: right;
+}
+.detail-events-table tr.conversation-event-row {
+  cursor: pointer;
+}
+.detail-events-table tr.conversation-event-row:hover {
+  background: var(--card-2);
+}
+
+.conversation-messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding-right: 4px;
+}
+
+.conv-message {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--card-2);
+}
+
+.conv-message-user {
+  border-left: 3px solid var(--accent);
+}
+
+.conv-message-assistant {
+  border-left: 3px solid #7aa2d6;
+}
+
+.conv-message-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+
+.conv-message-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.conv-message-model {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+}
+
+.conv-message-model.estimated {
+  color: var(--muted);
+  background: var(--card);
+  border-color: var(--border);
+  border-style: dashed;
+}
+
+.conv-message-text {
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

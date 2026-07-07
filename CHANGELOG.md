@@ -5,10 +5,20 @@ All notable changes to this project are documented in this file.
 ## [0.5.18] - 2026-05-07
 
 ### Added
-- Added `cursorUsage.quotaAwareEventDisplay` to control whether dashboard events show included usage as requests and on-demand usage as spend.
+- Local SQLite archive for usage events (120-day lookback) with incremental sync from the Cursor API.
+- Dashboard **Conversations** tab with optional title preview and message detail loaded from the Cursor state database.
+- Italian/English language selector and USD/EUR currency display across dashboard, status bar, and tooltip.
+- `cursorUsage.quotaAwareEventDisplay` to control whether dashboard events show included usage as requests and on-demand usage as spend.
+
+### Changed
+- Refactored Cursor API layer and dashboard frontend into smaller modules.
+- Conversation aggregation and spend totals now share one implementation between host and webview.
+- Dashboard webview receives usage events filtered to the active range/filter to reduce payload size.
 
 ### Fixed
 - Dashboard events, chart spend, model breakdown spend, and CSV export now treat included premium-request usage as request quota usage by default instead of on-demand spend.
+- Conversation message loading and DB reads surface errors instead of hanging on failure.
+- Event deduplication fingerprint now covers full billing metadata to avoid silently dropping distinct events.
 
 ## [0.5.15] - 2026-05-07
 

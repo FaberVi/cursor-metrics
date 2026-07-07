@@ -1,5 +1,5 @@
 export { configure } from "./cursor-api-logger";
-export { readCursorAuthValuesFromDb } from "./cursor-db-reader";
+export { readCursorAuthValuesFromDb, readTableKeyValue } from "./cursor-db-reader";
 export { getCachedMaxRequestUsage, isTeamMemberCached } from "./cursor-setup-cache";
 
 export type {

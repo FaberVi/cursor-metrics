@@ -4,6 +4,7 @@ import {
   escapeHtml,
   formatDollars,
   formatPercent,
+  formatPlanPriceText,
   formatResetCountdown,
 } from "./format.js";
 
@@ -30,10 +31,10 @@ function renderPlanBanner() {
         '<span class="plan-badge ' + badgeClass + '">' + escapeHtml(badgeLabel) + "</span>" +
         '<span class="plan-tier">' + escapeHtml(planInfo.tier) + "</span>" +
         (planInfo.priceLabel
-          ? '<span class="plan-price muted">' + escapeHtml(planInfo.priceLabel) + "</span>"
+          ? '<span class="plan-price muted">' + escapeHtml(formatPlanPriceText(planInfo.priceLabel)) + "</span>"
           : "") +
       "</div>" +
-      '<span class="plan-caption muted">' + escapeHtml(planInfo.displayName) + "</span>" +
+      '<span class="plan-caption muted">' + escapeHtml(formatPlanPriceText(planInfo.displayName)) + "</span>" +
     "</div>";
 }
 

@@ -207,17 +207,59 @@ function collectTableLeafRecords(
   }
 }
 
-function findItemTableRootPage(readDbPage: (pageNumber: number) => Buffer | null): number | null {
+function findTableRootPage(
+  readDbPage: (pageNumber: number) => Buffer | null,
+  tableName: string,
+): number | null {
   let rootPage: number | null = null;
   collectTableLeafRecords(readDbPage, 1, (record) => {
     const [type, name, , page] = record;
-    if (type === "table" && name === "ItemTable" && typeof page === "number" && page > 0) {
+    if (type === "table" && name === tableName && typeof page === "number" && page > 0) {
       rootPage = page;
       return false;
     }
     return true;
   });
   return rootPage;
+}
+
+function findItemTableRootPage(readDbPage: (pageNumber: number) => Buffer | null): number | null {
+  return findTableRootPage(readDbPage, "ItemTable");
+}
+
+export function readTableKeyValue(dbPath: string, tableName: string, key: string): string | null {
+  const fd = openSync(dbPath, "r");
+  let walIndex: WalIndex | null = null;
+  try {
+    const header = Buffer.alloc(100);
+    readSync(fd, header, 0, header.length, 0);
+    if (header.toString("utf8", 0, 16) !== "SQLite format 3\0") {
+      return null;
+    }
+
+    const pageSize = getSqlitePageSize(header);
+    walIndex = indexWalFile(dbPath, pageSize);
+    const readDbPage = (pageNumber: number) => readPage(fd, walIndex, pageNumber, pageSize);
+    const rootPage = findTableRootPage(readDbPage, tableName);
+    if (rootPage === null) return null;
+
+    let found: string | null = null;
+    collectTableLeafRecords(readDbPage, rootPage, (record) => {
+      if (record.length < 2) return true;
+      const [recordKey, value] = record;
+      if (recordKey === key && typeof value === "string") {
+        found = value;
+        return false;
+      }
+      return true;
+    });
+    return found;
+  } catch {
+    return null;
+  } finally {
+    if (walIndex) closeSync(walIndex.fd);
+    closeSync(fd);
+  }
 }
 
 export function readCursorAuthValuesFromDb(dbPath: string): CursorAuthValues {

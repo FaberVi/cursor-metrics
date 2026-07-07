@@ -9,7 +9,7 @@ import type {
   UsageEvent,
   UsagePayload,
 } from "./cursor-api-types";
-import { asRecord, MAX_USAGE_EVENT_PAGES, nextMonth, toNumber, withTimeout } from "./cursor-api-utils";
+import { asRecord, MAX_STORE_SYNC_PAGES, MAX_USAGE_EVENT_PAGES, nextMonth, toNumber, withTimeout } from "./cursor-api-utils";
 import { ensureSetup, withPlanInfo } from "./cursor-setup";
 import {
   extractTeamRequestLimit,
@@ -381,7 +381,12 @@ export async function fetchDailySpendByCategory(): Promise<DailySpendRow[]> {
   return parsedRows;
 }
 
-export async function fetchUsageEvents(): Promise<UsageEvent[]> {
+export type FetchUsageEventsOptions = {
+  maxPages?: number;
+  lookbackDays?: number;
+};
+
+export async function fetchUsageEvents(opts: FetchUsageEventsOptions = {}): Promise<UsageEvent[]> {
   apiLog("--- Fetching usage events ---");
 
   const auth = await getCursorToken();
@@ -395,12 +400,14 @@ export async function fetchUsageEvents(): Promise<UsageEvent[]> {
   const teamId = setup?.teamId ?? 0;
 
   const endDate = Date.now();
-  const startDate = endDate - 31 * 86_400_000;
+  const lookbackDays = opts.lookbackDays ?? 31;
+  const maxPages = opts.maxPages ?? MAX_USAGE_EVENT_PAGES;
+  const startDate = endDate - lookbackDays * 86_400_000;
   const pageSize = 500;
   let page = 1;
   const allEvents: UsageEvent[] = [];
 
-  while (page <= MAX_USAGE_EVENT_PAGES) {
+  while (page <= maxPages) {
     const res = await fetch("https://cursor.com/api/dashboard/get-filtered-usage-events", withTimeout({
       method: "POST",
       headers,
@@ -435,10 +442,10 @@ export async function fetchUsageEvents(): Promise<UsageEvent[]> {
     page++;
   }
 
-  if (page > MAX_USAGE_EVENT_PAGES) {
-    apiLog(`Stopped usage events fetch after ${MAX_USAGE_EVENT_PAGES} page(s)`);
+  if (page > maxPages) {
+    apiLog(`Stopped usage events fetch after ${maxPages} page(s)`);
   }
 
-  apiLog(`Fetched ${allEvents.length} usage events across ${Math.min(page, MAX_USAGE_EVENT_PAGES)} page(s)`);
+  apiLog(`Fetched ${allEvents.length} usage events across ${Math.min(page, maxPages)} page(s)`);
   return allEvents;
 }

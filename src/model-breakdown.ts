@@ -116,9 +116,15 @@ export function aggregateByModel(
   return sortModelAggregates(rows, sortBy, sortOrder);
 }
 
-export function formatDollarsFromCents(cents: number): string {
-  const dollars = cents / 100;
-  return `$${dollars.toFixed(2)}`;
+import type { DashboardCurrency, DashboardLocale } from "./dashboard-locale";
+import { formatMoneyFromCents } from "./currency-format";
+
+export function formatDollarsFromCents(
+  cents: number,
+  currency: DashboardCurrency = "usd",
+  locale: DashboardLocale = "en",
+): string {
+  return formatMoneyFromCents(cents, currency, locale);
 }
 
 export function filterZeroTokenModels(rows: ModelAggregate[], excludeZeroTokenModels: boolean): ModelAggregate[] {

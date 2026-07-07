@@ -23,6 +23,7 @@ const baseEvent = {
   isTokenBasedCall: false,
   isHeadless: false,
   isChargeable: true,
+  conversationId: null,
 };
 
 describe("model breakdown aggregation", () => {
@@ -152,6 +153,11 @@ describe("model breakdown formatting", () => {
     expect(formatDollarsFromCents(0)).toBe("$0.00");
     expect(formatDollarsFromCents(229)).toBe("$2.29");
     expect(formatDollarsFromCents(12345)).toBe("$123.45");
+  });
+
+  it("formats cents into euros", () => {
+    expect(formatDollarsFromCents(229, "eur", "en")).toBe("€2.11");
+    expect(formatDollarsFromCents(12345, "eur", "it")).toContain("113");
   });
 
   it("computes cutoff timestamps for all durations", () => {

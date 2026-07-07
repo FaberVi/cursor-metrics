@@ -1,0 +1,106 @@
+import type { UsageDuration } from "./model-breakdown";
+import type { DashboardLocale } from "./dashboard-locale";
+
+export function getDateLocale(locale: DashboardLocale): string {
+  return locale === "it" ? "it-IT" : "en-US";
+}
+
+const MESSAGES = {
+  en: {
+    title: "Cursor Usage",
+    included: "Included",
+    onDemand: "On-demand",
+    unlimited: "Unlimited",
+    spendUnavailable: "Spend unavailable",
+    includedPool: "Included pool",
+    totalUsed: "{pct}% total used",
+    dailyBudget: "Daily budget",
+    evenSpreadUntilReset: "Even spread until reset",
+    budgetPct: "{pct}% budget",
+    onBudget: "On budget",
+    leftToday: "{pct}% left today",
+    overBudget: "{pct}% over budget",
+    usageByModel: "Usage by Model",
+    change: "Change",
+    duration1d: "24 hours",
+    duration7d: "7 days",
+    duration30d: "30 days",
+    durationBilling: "Current Billing Cycle",
+    colModel: "Model",
+    colRequests: "Requests",
+    colTokens: "Tokens",
+    colSpend: "Spend",
+    noUsageInPeriod: "No usage in this period",
+    openDashboard: "Open Dashboard",
+    refresh: "Refresh",
+    fetchError: "Could not fetch Cursor usage data. Click to see options.",
+    usageUnavailable: "Usage unavailable",
+    errorPrefix: "Error",
+  },
+  it: {
+    title: "Utilizzo Cursor",
+    included: "Incluso",
+    onDemand: "On-Demand",
+    unlimited: "Illimitato",
+    spendUnavailable: "Spesa non disponibile",
+    includedPool: "Pool incluso",
+    totalUsed: "{pct}% totale usato",
+    dailyBudget: "Budget giornaliero",
+    evenSpreadUntilReset: "Distribuzione uniforme fino al reset",
+    budgetPct: "{pct}% budget",
+    onBudget: "Nei limiti",
+    leftToday: "{pct}% rimasti oggi",
+    overBudget: "{pct}% oltre soglia",
+    usageByModel: "Utilizzo per modello",
+    change: "Modifica",
+    duration1d: "Ultime 24 ore",
+    duration7d: "Ultimi 7 giorni",
+    duration30d: "Ultimi 30 giorni",
+    durationBilling: "Ciclo di fatturazione corrente",
+    colModel: "Modello",
+    colRequests: "Richieste",
+    colTokens: "Token",
+    colSpend: "Spesa",
+    noUsageInPeriod: "Nessun utilizzo in questo periodo",
+    openDashboard: "Apri dashboard",
+    refresh: "Aggiorna",
+    fetchError: "Impossibile recuperare i dati di utilizzo. Clicca per le opzioni.",
+    usageUnavailable: "Utilizzo non disponibile",
+    errorPrefix: "Errore",
+  },
+} as const;
+
+type MessageKey = keyof typeof MESSAGES.en;
+
+export function t(locale: DashboardLocale, key: MessageKey): string {
+  return MESSAGES[locale][key] ?? MESSAGES.en[key];
+}
+
+export function tf(locale: DashboardLocale, key: MessageKey, vars: Record<string, string | number>): string {
+  let text = t(locale, key);
+  for (const [name, value] of Object.entries(vars)) {
+    text = text.replace(`{${name}}`, String(value));
+  }
+  return text;
+}
+
+export function getDurationLabel(duration: UsageDuration, locale: DashboardLocale): string {
+  if (duration === "1d") return t(locale, "duration1d");
+  if (duration === "7d") return t(locale, "duration7d");
+  if (duration === "30d") return t(locale, "duration30d");
+  return t(locale, "durationBilling");
+}
+
+export function formatResetCountdown(iso: string, locale: DashboardLocale, now = Date.now()): string {
+  const reset = new Date(iso);
+  const days = Math.max(0, Math.ceil((reset.getTime() - now) / 86_400_000));
+  const formatted = reset.toLocaleDateString(getDateLocale(locale), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  if (locale === "it") {
+    return `Reset tra ${days} ${days === 1 ? "giorno" : "giorni"} il ${formatted}`;
+  }
+  return `Resets in ${days} day${days === 1 ? "" : "s"} on ${formatted}`;
+}

@@ -11,11 +11,20 @@ import {
   type UsageEvent,
 } from "./cursor-api";
 import { DashboardPanel, OPEN_DASHBOARD_COMMAND } from "./dashboard-panel";
-import { buildDashboardState, type DashboardState } from "./dashboard-state";
+import { buildConversationTitleMap } from "./conversation-titles";
+import { loadConversationMessages } from "./conversation-messages";
+import { CONVERSATION_PREVIEW_KEY } from "./dashboard-locale";
+import { getDashboardLocale } from "./dashboard-locale-state";
+import { getDashboardCurrency } from "./dashboard-currency-state";
+import type { DashboardCurrency, DashboardLocale } from "./dashboard-locale";
+import { formatOnDemandStatus } from "./currency-format";
+import { buildDashboardState, filterDashboardEvents, type DashboardState } from "./dashboard-state";
+import { MAX_STORE_SYNC_PAGES } from "./cursor-api-utils";
 import {
   resolveConfiguredUsageDuration,
 } from "./duration-options";
 import { formatTokens } from "./format";
+import { formatResetCountdown, t } from "./i18n";
 import {
   aggregateByModel,
   filterZeroTokenModels,
@@ -31,6 +40,7 @@ import {
   buildUsageOverviewMarkdown,
   OPEN_DURATION_SETTING_COMMAND,
 } from "./tooltip";
+import { UsageEventStore } from "./usage-event-store";
 
 let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
@@ -41,7 +51,13 @@ let lastFetchTime = 0;
 let isFetching = false;
 let lastEvents: UsageEvent[] | null = null;
 let lastDailySpend: DailySpendRow[] | null = null;
+let extensionContext: vscode.ExtensionContext;
+let eventStore: UsageEventStore | null = null;
+let conversationTitles: Record<string, string> = {};
+let conversationPreviewEnabled = false;
+let storedEventCount = 0;
 
+const STORE_LOOKBACK_DAYS = 120;
 const DEBOUNCE_MS = 30_000;
 
 function log(msg: string) {
@@ -84,17 +100,59 @@ function refreshOnFocus(state: vscode.WindowState) {
   }
 }
 
-function formatResetDate(iso: string): string {
-  const resetDate = new Date(iso);
-  const now = new Date();
-  const diffMs = resetDate.getTime() - now.getTime();
-  const daysLeft = Math.max(0, Math.ceil(diffMs / 86_400_000));
-  const formatted = resetDate.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  return `in ${daysLeft} day${daysLeft !== 1 ? "s" : ""} on ${formatted}`;
+function getLocale(): DashboardLocale {
+  return getDashboardLocale(extensionContext);
+}
+
+function getCurrency(): DashboardCurrency {
+  return getDashboardCurrency(extensionContext);
+}
+
+function isConversationPreviewEnabled(): boolean {
+  return extensionContext.globalState.get<boolean>(CONVERSATION_PREVIEW_KEY) === true;
+}
+
+async function ensureEventStore(): Promise<UsageEventStore> {
+  if (!eventStore) {
+    eventStore = new UsageEventStore(
+      extensionContext.globalStorageUri.fsPath,
+      extensionContext.extensionPath,
+    );
+    await eventStore.init();
+  }
+  return eventStore;
+}
+
+async function refreshConversationTitles(events: UsageEvent[]): Promise<number> {
+  conversationPreviewEnabled = isConversationPreviewEnabled();
+  if (!conversationPreviewEnabled) {
+    conversationTitles = {};
+    return 0;
+  }
+  const ids = events.map((event) => event.conversationId).filter((id): id is string => Boolean(id));
+  conversationTitles = await buildConversationTitleMap(ids, extensionContext.extensionPath);
+  return Object.keys(conversationTitles).length;
+}
+
+async function handleConversationPreviewChange(previewEnabled: boolean): Promise<void> {
+  conversationPreviewEnabled = previewEnabled;
+  await extensionContext.globalState.update(CONVERSATION_PREVIEW_KEY, previewEnabled);
+  const conversationCount = previewEnabled
+    ? new Set((lastEvents ?? []).map((e) => e.conversationId).filter(Boolean)).size
+    : 0;
+  const titleCount = previewEnabled && lastEvents ? await refreshConversationTitles(lastEvents) : 0;
+  if (!previewEnabled) {
+    conversationTitles = {};
+  }
+  DashboardPanel.currentPanel?.postPreviewStatus(previewEnabled, titleCount, conversationCount);
+  DashboardPanel.currentPanel?.postState(getDashboardState());
+}
+
+async function loadStoredEvents(): Promise<UsageEvent[]> {
+  const store = await ensureEventStore();
+  storedEventCount = store.getEventCount();
+  const since = Date.now() - STORE_LOOKBACK_DAYS * 86_400_000;
+  return store.getEventsSince(since);
 }
 
 function isLightTheme(): boolean {
@@ -162,18 +220,20 @@ type OnDemandUsage = UsagePayload["onDemand"];
 function buildModelBreakdownTableMarkdown(
   rows: Array<{ model: string; totalTokens: number; requests: number; spendCents: number }>,
   tableWidth: number,
+  locale: DashboardLocale,
+  currency: DashboardCurrency,
 ): string {
   if (rows.length === 0) {
-    return "*No usage in this period*\n\n";
+    return `*${t(locale, "noUsageInPeriod")}*\n\n`;
   }
 
   const lines = [
     `<table width="${tableWidth}" cellspacing="0" cellpadding="0">`,
     `  <tr>`,
-    `    <th align="left" width="45%">Model</th>`,
-    `    <th align="right" width="15%">Requests</th>`,
-    `    <th align="right" width="20%">Tokens</th>`,
-    `    <th align="right" width="20%">Spend</th>`,
+    `    <th align="left" width="45%">${t(locale, "colModel")}</th>`,
+    `    <th align="right" width="15%">${t(locale, "colRequests")}</th>`,
+    `    <th align="right" width="20%">${t(locale, "colTokens")}</th>`,
+    `    <th align="right" width="20%">${t(locale, "colSpend")}</th>`,
     `  </tr>`,
   ];
 
@@ -183,7 +243,7 @@ function buildModelBreakdownTableMarkdown(
       `<td align="left">${escapeHtml(formatModelLabel(row.model))}</td>` +
       `<td align="right">${Math.round(row.requests)}</td>` +
       `<td align="right">${formatTokens(row.totalTokens)}</td>` +
-      `<td align="right">${formatDollarsFromCents(row.spendCents)}</td>` +
+      `<td align="right">${formatDollarsFromCents(row.spendCents, currency, locale)}</td>` +
       `</tr>`,
     );
   }
@@ -196,39 +256,39 @@ function isOnDemandVisible(onDemand: OnDemandUsage): boolean {
   return onDemand.state !== "disabled";
 }
 
-function getOnDemandRatio(onDemand: OnDemandUsage): number | null {
-  if (onDemand.state !== "limited") return null;
-  if (onDemand.limitDollars === null || onDemand.limitDollars <= 0) return null;
-  return onDemand.spendDollars / onDemand.limitDollars;
+function formatOnDemandStatusBar(onDemand: OnDemandUsage): string {
+  return formatOnDemandStatus(
+    onDemand.spendDollars,
+    onDemand.limitDollars,
+    onDemand.state,
+    getCurrency(),
+    getLocale(),
+  );
 }
 
-function formatOnDemandStatus(onDemand: OnDemandUsage): string {
-  if (onDemand.state === "unlimited") {
-    return `$${onDemand.spendDollars.toFixed(2)}`;
-  }
-  return `$${onDemand.spendDollars.toFixed(2)}/$${(onDemand.limitDollars ?? 0).toFixed(2)}`;
-}
-
-function formatOnDemandTooltipCell(onDemand: OnDemandUsage): string {
-  if (onDemand.state === "unlimited") {
-    return `$${onDemand.spendDollars.toFixed(2)}`;
-  }
-  const ratio = getOnDemandRatio(onDemand);
-  const pct = ratio === null ? 0 : Math.round(ratio * 100);
-  return `$${onDemand.spendDollars.toFixed(2)} / $${(onDemand.limitDollars ?? 0).toFixed(2)} (${pct}%)`;
+function getDashboardEvents(now = Date.now()): UsageEvent[] {
+  const allEvents = lastEvents ?? [];
+  return filterDashboardEvents(
+    allEvents,
+    DashboardPanel.getDashboardEventFilter(),
+    lastData?.resetsAt ?? null,
+    now,
+  );
 }
 
 function updateStatusBar(data: UsagePayload) {
   const { includedRequests, onDemand } = data;
   const { minimalMode } = getConfig();
+  const locale = getLocale();
+  const currency = getCurrency();
 
   const premiumExhausted = includedRequests.used >= includedRequests.limit;
   const onDemandVisible = isOnDemandVisible(onDemand);
 
   if (minimalMode && premiumExhausted && onDemandVisible) {
-    statusBarItem.text = `$(pulse) ${formatOnDemandStatus(onDemand)}`;
+    statusBarItem.text = `$(pulse) ${formatOnDemandStatusBar(onDemand)}`;
   } else {
-    statusBarItem.text = `$(pulse) ${formatStatusBarUsageText(data, { onDemandVisible })}`;
+    statusBarItem.text = `$(pulse) ${formatStatusBarUsageText(data, { onDemandVisible, currency, locale })}`;
   }
 
   const tooltip = new vscode.MarkdownString();
@@ -239,7 +299,7 @@ function updateStatusBar(data: UsagePayload) {
   tooltip.supportHtml = true;
 
   const barW = 150;
-  let md = `### $(pulse) Cursor Usage\n\n`;
+  let md = `### $(pulse) ${t(locale, "title")}\n\n`;
   md += buildUsageOverviewMarkdown(
     { includedRequests, onDemand, poolUsage: data.poolUsage, resetsAt: data.resetsAt },
     {
@@ -247,8 +307,10 @@ function updateStatusBar(data: UsagePayload) {
       html: (ratio) => progressBarHtml(ratio, barW),
       divider: () => summaryDividerHtml(),
     },
+    locale,
     Date.now(),
     lastEvents ?? [],
+    currency,
   );
   md += `\n`;
 
@@ -266,18 +328,18 @@ function updateStatusBar(data: UsagePayload) {
     );
     const filteredModels = filterZeroTokenModels(models, config.excludeZeroTokenModels);
     md += `<hr>\n\n`;
-    md += buildUsageByModelHeadingMarkdown(usageDuration);
+    md += buildUsageByModelHeadingMarkdown(usageDuration, locale);
     const modelTableWidth = barW * 2 + 2;
-    md += buildModelBreakdownTableMarkdown(filteredModels, modelTableWidth);
+    md += buildModelBreakdownTableMarkdown(filteredModels, modelTableWidth, locale, currency);
   }
 
   if (data.resetsAt) {
     md += `<hr>\n\n`;
-    md += `*Resets ${formatResetDate(data.resetsAt)}*\n\n`;
+    md += `*${formatResetCountdown(data.resetsAt, locale)}*\n\n`;
   }
 
   md += `<hr>\n\n`;
-  md += `[Open Dashboard](command:${OPEN_DASHBOARD_COMMAND}) | [Refresh](command:cursor-usage.refresh)`;
+  md += `[${t(locale, "openDashboard")}](command:${OPEN_DASHBOARD_COMMAND}) | [${t(locale, "refresh")}](command:cursor-usage.refresh)`;
 
   tooltip.appendMarkdown(md);
   statusBarItem.tooltip = tooltip;
@@ -293,12 +355,21 @@ async function updateUsage() {
   try {
     const [dataResult, eventsResult, spendResult] = await Promise.allSettled([
       fetchUsageData(),
-      fetchUsageEvents(),
+      fetchUsageEvents({ maxPages: MAX_STORE_SYNC_PAGES, lookbackDays: STORE_LOOKBACK_DAYS }),
       fetchDailySpendByCategory(),
     ]);
 
     if (eventsResult.status === "fulfilled") {
-      lastEvents = eventsResult.value;
+      const apiEvents = eventsResult.value;
+      try {
+        const store = await ensureEventStore();
+        store.upsertEvents(apiEvents);
+        lastEvents = await loadStoredEvents();
+      } catch (err: unknown) {
+        log(`Event store sync failed: ${err instanceof Error ? err.message : String(err)}`);
+        lastEvents = apiEvents;
+      }
+      await refreshConversationTitles(lastEvents ?? []);
     } else if (eventsResult.status === "rejected") {
       log(`Usage events fetch failed: ${eventsResult.reason}`);
     }
@@ -315,16 +386,17 @@ async function updateUsage() {
     }
 
     if (data) {
-      const events = eventsResult.status === "fulfilled" ? eventsResult.value : [];
-      const enriched = enrichUsageFromEvents(data, events, Date.now());
+      const eventsForEnrichment = lastEvents ?? [];
+      const enriched = enrichUsageFromEvents(data, eventsForEnrichment, Date.now());
       lastData = enriched;
       lastError = null;
       updateStatusBar(enriched);
     } else {
       lastError = "Could not fetch usage data";
+      const locale = getLocale();
       if (!lastData) {
-        statusBarItem.text = "$(warning) Usage unavailable";
-        statusBarItem.tooltip = "Could not fetch Cursor usage data. Click to see options.";
+        statusBarItem.text = `$(warning) ${t(locale, "usageUnavailable")}`;
+        statusBarItem.tooltip = t(locale, "fetchError");
       } else {
         statusBarItem.text = statusBarItem.text.replace("$(loading~spin)", "$(pulse)");
       }
@@ -335,9 +407,10 @@ async function updateUsage() {
     const msg = err instanceof Error ? err.message : String(err);
     log(`Error in updateUsage: ${msg}`);
     lastError = msg;
+    const locale = getLocale();
     if (!lastData) {
-      statusBarItem.text = "$(warning) Usage unavailable";
-      statusBarItem.tooltip = `Error: ${msg}`;
+      statusBarItem.text = `$(warning) ${t(locale, "usageUnavailable")}`;
+      statusBarItem.tooltip = `${t(locale, "errorPrefix")}: ${msg}`;
     } else {
       statusBarItem.text = statusBarItem.text.replace("$(loading~spin)", "$(pulse)");
     }
@@ -365,8 +438,8 @@ async function showDetails() {
   const { includedRequests, onDemand, resetsAt } = lastData;
   const onDemandVisible = isOnDemandVisible(onDemand);
 
-  let message = `Requests: ${formatStatusBarUsageText(lastData, { onDemandVisible })}`;
-  if (resetsAt) message += ` | Resets: ${formatResetDate(resetsAt)}`;
+  let message = `Requests: ${formatStatusBarUsageText(lastData, { onDemandVisible, currency: getCurrency(), locale: getLocale() })}`;
+  if (resetsAt) message += ` | ${formatResetCountdown(resetsAt, getLocale())}`;
 
   const action = await vscode.window.showInformationMessage(
     message,
@@ -386,18 +459,23 @@ async function openDurationSetting() {
 }
 
 function getDashboardState(): DashboardState {
+  const now = Date.now();
   return buildDashboardState(
     lastData,
-    lastEvents ?? [],
+    getDashboardEvents(now),
     lastDailySpend ?? [],
     isTeamMemberCached(),
     lastError,
-    Date.now(),
+    now,
     getConfig().quotaAwareEventDisplay,
+    conversationPreviewEnabled ? conversationTitles : {},
+    storedEventCount,
   );
 }
 
 export function activate(context: vscode.ExtensionContext) {
+  extensionContext = context;
+  conversationPreviewEnabled = isConversationPreviewEnabled();
   outputChannel = vscode.window.createOutputChannel("Cursor Usage");
   log("Extension activating...");
 
@@ -412,7 +490,15 @@ export function activate(context: vscode.ExtensionContext) {
   const refreshCmd = vscode.commands.registerCommand("cursor-usage.refresh", updateUsage);
   const openDurationSettingCmd = vscode.commands.registerCommand(OPEN_DURATION_SETTING_COMMAND, openDurationSetting);
   const openDashboardCmd = vscode.commands.registerCommand(OPEN_DASHBOARD_COMMAND, () => {
-    DashboardPanel.createOrShow(context, updateUsage, getDashboardState);
+    DashboardPanel.createOrShow(
+      context,
+      updateUsage,
+      getDashboardState,
+      () => {
+        if (lastData) updateStatusBar(lastData);
+      },
+      handleConversationPreviewChange,
+    );
     DashboardPanel.currentPanel?.postState(getDashboardState());
   });
 
@@ -458,4 +544,6 @@ export function deactivate() {
     clearTimeout(debounceTimer);
     debounceTimer = undefined;
   }
+  eventStore?.close();
+  eventStore = null;
 }

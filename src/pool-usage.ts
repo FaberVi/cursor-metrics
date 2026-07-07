@@ -1,4 +1,7 @@
 import type { UsagePayload } from "./cursor-api";
+import type { DashboardCurrency, DashboardLocale } from "./dashboard-locale";
+import { formatOnDemandStatus } from "./currency-format";
+import { t, tf } from "./i18n";
 import type { PoolDayPace } from "./pool-usage-series";
 
 type ProgressBarRenderer = {
@@ -12,8 +15,14 @@ function formatPercent(value: number): string {
 
 export function formatStatusBarUsageText(
   data: Pick<UsagePayload, "includedRequests" | "onDemand" | "poolUsage">,
-  opts: { onDemandVisible: boolean },
+  opts: {
+    onDemandVisible: boolean;
+    currency?: DashboardCurrency;
+    locale?: DashboardLocale;
+  },
 ): string {
+  const currency = opts.currency ?? "usd";
+  const locale = opts.locale ?? "en";
   const parts = [`${data.includedRequests.used}/${data.includedRequests.limit}`];
 
   if (data.poolUsage) {
@@ -22,13 +31,15 @@ export function formatStatusBarUsageText(
   }
 
   if (opts.onDemandVisible) {
-    if (data.onDemand.state === "unlimited") {
-      parts.push(`$${data.onDemand.spendDollars.toFixed(2)}`);
-    } else {
-      parts.push(
-        `$${data.onDemand.spendDollars.toFixed(2)}/$${(data.onDemand.limitDollars ?? 0).toFixed(2)}`,
-      );
-    }
+    parts.push(
+      formatOnDemandStatus(
+        data.onDemand.spendDollars,
+        data.onDemand.limitDollars,
+        data.onDemand.state,
+        currency,
+        locale,
+      ),
+    );
   }
 
   return parts.join(", ");
@@ -37,14 +48,15 @@ export function formatStatusBarUsageText(
 export function buildPoolUsageMarkdown(
   poolUsage: NonNullable<UsagePayload["poolUsage"]>,
   renderProgressBar: ProgressBarRenderer,
+  locale: DashboardLocale,
 ): string {
   const autoRatio = Math.min(Math.max(poolUsage.autoPercentUsed / 100, 0), 1);
   const apiRatio = Math.min(Math.max(poolUsage.apiPercentUsed / 100, 0), 1);
 
   return [
     `<table width="100%" cellspacing="0" cellpadding="0">`,
-    `  <tr><td colspan="2"><sub>Included pool</sub></td></tr>`,
-    `  <tr><td colspan="2"><strong>${formatPercent(poolUsage.totalPercentUsed)}% total used</strong></td></tr>`,
+    `  <tr><td colspan="2"><sub>${t(locale, "includedPool")}</sub></td></tr>`,
+    `  <tr><td colspan="2"><strong>${tf(locale, "totalUsed", { pct: formatPercent(poolUsage.totalPercentUsed) })}</strong></td></tr>`,
     `  <tr>`,
     `    <td width="18%"><sub>Auto</sub></td>`,
     `    <td><sub>${formatPercent(poolUsage.autoPercentUsed)}%</sub> ${renderProgressBar.html(autoRatio)}</td>`,
@@ -62,6 +74,7 @@ export function buildPoolTodayPaceMarkdown(
   autoPace: PoolDayPace | null,
   apiPace: PoolDayPace | null,
   renderProgressBar: ProgressBarRenderer,
+  locale: DashboardLocale,
 ): string {
   if (!autoPace && !apiPace) return "";
 
@@ -72,23 +85,23 @@ export function buildPoolTodayPaceMarkdown(
     rows.push(
       `  <tr>`,
       `    <td width="18%"><sub>${label}</sub></td>`,
-        `    <td><sub>${formatPercent(pace.allowance)}% budget</sub> ${renderProgressBar.html(usedRatio)} <sub>${formatBudgetStatus(pace)}</sub></td>`,
+      `    <td><sub>${tf(locale, "budgetPct", { pct: formatPercent(pace.allowance) })}</sub> ${renderProgressBar.html(usedRatio)} <sub>${formatBudgetStatus(pace, locale)}</sub></td>`,
       `  </tr>`,
     );
   }
 
   return [
     `<table width="100%" cellspacing="0" cellpadding="0">`,
-    `  <tr><td colspan="2"><sub>Daily budget</sub></td></tr>`,
-    `  <tr><td colspan="2"><sub>Even spread until reset</sub></td></tr>`,
+    `  <tr><td colspan="2"><sub>${t(locale, "dailyBudget")}</sub></td></tr>`,
+    `  <tr><td colspan="2"><sub>${t(locale, "evenSpreadUntilReset")}</sub></td></tr>`,
     ...rows,
     `</table>`,
     ``,
   ].join("\n");
 }
 
-function formatBudgetStatus(pace: PoolDayPace): string {
-  if (Math.abs(pace.residual) < 0.05) return "On budget";
-  if (pace.residual > 0) return `${formatPercent(pace.residual)}% left today`;
-  return `${formatPercent(Math.abs(pace.residual))}% over budget`;
+function formatBudgetStatus(pace: PoolDayPace, locale: DashboardLocale): string {
+  if (Math.abs(pace.residual) < 0.05) return t(locale, "onBudget");
+  if (pace.residual > 0) return tf(locale, "leftToday", { pct: formatPercent(pace.residual) });
+  return tf(locale, "overBudget", { pct: formatPercent(Math.abs(pace.residual)) });
 }

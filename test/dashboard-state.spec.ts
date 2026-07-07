@@ -23,6 +23,7 @@ const baseEvent = {
   isTokenBasedCall: false,
   isHeadless: false,
   isChargeable: true,
+  conversationId: null,
 };
 
 const sampleData: UsagePayload = {

@@ -19,10 +19,13 @@ import {
   formatDollars,
   formatFullDateTime,
   formatModelLabel,
+  formatPerPage,
   formatRequests,
   formatTokenCount,
   formatTokens,
+  getActiveCurrency,
   getDurationCutoff,
+  toCsvMoney,
   isIncludedEvent,
   isOnDemandEvent,
   matchesUsageFilter,
@@ -32,6 +35,7 @@ import {
   toMillis,
   tokenField,
 } from "./format.js";
+import { t } from "./i18n.js";
 
 export function getSortedEvents() {
   if (!refs.state) return [];
@@ -160,6 +164,7 @@ function renderEventDetailFlags(event) {
 export function showEventDetail(event, eventIdx) {
   if (!ui.eventDetailOverlay || !ui.eventDetailBody) return;
   setSelectedEventIdx(eventIdx);
+  refs.selectedConversationId = null;
   renderTable();
 
   const maxBadge = event.maxMode ? ' <span class="max-badge">MAX</span>' : "";
@@ -187,6 +192,7 @@ export function showEventDetail(event, eventIdx) {
 export function closeEventDetail() {
   if (!ui.eventDetailOverlay) return;
   setSelectedEventIdx(null);
+  refs.selectedConversationId = null;
   ui.eventDetailOverlay.classList.add("hidden");
   ui.eventDetailOverlay.setAttribute("aria-hidden", "true");
   renderTable();
@@ -201,23 +207,24 @@ function renderPagination(paged) {
   const showingStart = paged.startIndex + 1;
   const showingEnd = paged.endIndex;
   const sizeOptions = EVENTS_PAGE_SIZES.map((size) =>
-    '<option value="' + size + '"' + (size === local.eventsPageSize ? " selected" : "") + ">" + size + "/page</option>"
+    '<option value="' + size + '"' + (size === local.eventsPageSize ? " selected" : "") + ">" + formatPerPage(size) + "</option>"
   ).join("");
   const atFirst = paged.page <= 1;
   const atLast = paged.page >= paged.totalPages;
 
   ui.pagination.innerHTML =
-    '<span class="pagination-info">Showing ' +
+    '<span class="pagination-info">' + t("showing") + " " +
       showingStart.toLocaleString() + "\u2013" + showingEnd.toLocaleString() +
-      " of " + paged.totalItems.toLocaleString() + " event" + (paged.totalItems === 1 ? "" : "s") +
+      " " + t("of") + " " + paged.totalItems.toLocaleString() + " " +
+      (paged.totalItems === 1 ? t("eventOne") : t("eventMany")) +
     "</span>" +
     '<div class="pagination-controls">' +
-      '<select id="events-page-size" class="pagination-size" aria-label="Events per page">' + sizeOptions + "</select>" +
-      '<button type="button" data-action="first"' + (atFirst ? " disabled" : "") + ' aria-label="First page">\u00ab</button>' +
-      '<button type="button" data-action="prev"' + (atFirst ? " disabled" : "") + ' aria-label="Previous page">\u2039</button>' +
+      '<select id="events-page-size" class="pagination-size" aria-label="' + escapeHtml(t("eventsPerPage")) + '">' + sizeOptions + "</select>" +
+      '<button type="button" data-action="first"' + (atFirst ? " disabled" : "") + ' aria-label="' + escapeHtml(t("pageFirst")) + '">\u00ab</button>' +
+      '<button type="button" data-action="prev"' + (atFirst ? " disabled" : "") + ' aria-label="' + escapeHtml(t("pagePrev")) + '">\u2039</button>' +
       '<span class="pagination-page">' + paged.page + " / " + paged.totalPages + "</span>" +
-      '<button type="button" data-action="next"' + (atLast ? " disabled" : "") + ' aria-label="Next page">\u203a</button>' +
-      '<button type="button" data-action="last"' + (atLast ? " disabled" : "") + ' aria-label="Last page">\u00bb</button>' +
+      '<button type="button" data-action="next"' + (atLast ? " disabled" : "") + ' aria-label="' + escapeHtml(t("pageNext")) + '">\u203a</button>' +
+      '<button type="button" data-action="last"' + (atLast ? " disabled" : "") + ' aria-label="' + escapeHtml(t("pageLast")) + '">\u00bb</button>' +
     "</div>";
 }
 
@@ -231,7 +238,7 @@ export function renderTable() {
   }
 
   if (events.length === 0) {
-    ui.tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px;" class="muted">No events in this range</td></tr>';
+    ui.tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px;" class="muted">' + escapeHtml(t("noEventsInRange")) + "</td></tr>";
     ui.pagination.innerHTML = "";
   } else {
     ui.tableBody.innerHTML = paged.items.map((e, i) => renderEventRow(e, paged.startIndex + i)).join("");
@@ -295,7 +302,7 @@ export function renderBreakdown() {
       '<td>' + escapeHtml(formatModelLabel(r.model)) + '</td>' +
       '<td class="num">' + formatRequests(r.requests) + '</td>' +
       '<td class="num">' + formatTokens(r.totalTokens) + '</td>' +
-      '<td class="num">' + formatDollars(r.spendCents / 100) + '</td>' +
+      '<td class="num">' + formatCents(r.spendCents) + '</td>' +
     '</tr>';
   }).join("");
 }
@@ -309,7 +316,10 @@ function csvCell(v) {
 
 export function exportCsv() {
   const events = getSortedEvents();
-  const header = ["Date", "Type", "Model", "MaxMode", "Tokens", "InputTokens", "OutputTokens", "CacheWrite", "CacheRead", "Requests", "SpendUSD", "TokenCostUSD", "CursorFeeUSD"];
+  const spendCol = getActiveCurrency() === "eur" ? "SpendEUR" : "SpendUSD";
+  const tokenCostCol = getActiveCurrency() === "eur" ? "TokenCostEUR" : "TokenCostUSD";
+  const feeCol = getActiveCurrency() === "eur" ? "CursorFeeEUR" : "CursorFeeUSD";
+  const header = ["Date", "Type", "Model", "MaxMode", "Tokens", "InputTokens", "OutputTokens", "CacheWrite", "CacheRead", "Requests", spendCol, tokenCostCol, feeCol];
   const lines = [header.join(",")];
   for (const e of events) {
     const ts = toMillis(e.timestamp);
@@ -325,9 +335,9 @@ export function exportCsv() {
       tokenField(e, "cacheWriteTokens"),
       tokenField(e, "cacheReadTokens"),
       refs.state && refs.state.quotaAwareEventDisplay && !isIncludedEvent(e) ? "" : (e.requests || 0),
-      refs.state && refs.state.quotaAwareEventDisplay && !isOnDemandEvent(e) ? "" : eventSpendDollars(e).toFixed(4),
-      ((e.tokenCostCents || 0) / 100).toFixed(4),
-      ((e.cursorTokenFee || 0) / 100).toFixed(4),
+      refs.state && refs.state.quotaAwareEventDisplay && !isOnDemandEvent(e) ? "" : toCsvMoney(eventSpendDollars(e)),
+      toCsvMoney((e.tokenCostCents || 0) / 100),
+      toCsvMoney((e.cursorTokenFee || 0) / 100),
     ].map(csvCell).join(",");
     lines.push(row);
   }
