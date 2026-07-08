@@ -18,6 +18,7 @@ import { getDashboardLocale } from "./dashboard-locale-state";
 import { getDashboardCurrency } from "./dashboard-currency-state";
 import type { DashboardCurrency, DashboardLocale } from "./dashboard-locale";
 import { formatOnDemandStatus } from "./currency-format";
+import { isOnDemandVisible } from "./on-demand";
 import { buildDashboardState, filterDashboardEvents, type DashboardState } from "./dashboard-state";
 import { MAX_STORE_SYNC_PAGES } from "./cursor-api-utils";
 import {
@@ -40,6 +41,7 @@ import {
   buildUsageOverviewMarkdown,
   OPEN_DURATION_SETTING_COMMAND,
 } from "./tooltip";
+import { isIncludedQuotaExhausted, shouldShowPremiumRequestsQuota } from "./usage-display";
 import { UsageEventStore } from "./usage-event-store";
 
 let statusBarItem: vscode.StatusBarItem;
@@ -190,6 +192,40 @@ function progressBarHtml(ratio: number, barWidth = 220): string {
   return `<img src="${progressBarDataUri(ratio, barWidth)}" width="${barWidth}" height="10" />`;
 }
 
+function segmentedProgressBarDataUri(
+  segments: Array<{ ratio: number; opacity: number }>,
+  barWidth = 220,
+): string {
+  const width = barWidth;
+  const height = 10;
+  const r = height / 2;
+  const light = isLightTheme();
+  const trackColor = light ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.18)";
+  const fillColor = light ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.82)";
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`;
+  svg += `<rect width="${width}" height="${height}" rx="${r}" ry="${r}" fill="${trackColor}"/>`;
+
+  let offset = 0;
+  for (const segment of segments) {
+    const segmentWidth = Math.round(Math.min(Math.max(segment.ratio, 0), 1) * width);
+    if (segmentWidth <= 0) continue;
+    const opacity = Math.min(Math.max(segment.opacity, 0), 1);
+    svg += `<rect x="${offset}" width="${segmentWidth}" height="${height}" fill="${fillColor}" opacity="${opacity}"/>`;
+    offset += segmentWidth;
+  }
+  svg += `</svg>`;
+
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}
+
+function segmentedProgressBarHtml(
+  segments: Array<{ ratio: number; opacity: number }>,
+  barWidth = 220,
+): string {
+  return `<img src="${segmentedProgressBarDataUri(segments, barWidth)}" width="${barWidth}" height="10" />`;
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
     const entities: Record<string, string> = {
@@ -214,9 +250,6 @@ function summaryDividerHtml(height = 52): string {
   const encoded = Buffer.from(svg).toString("base64");
   return `<img src="data:image/svg+xml;base64,${encoded}" width="2" height="${height}" />`;
 }
-
-type OnDemandUsage = UsagePayload["onDemand"];
-
 function buildModelBreakdownTableMarkdown(
   rows: Array<{ model: string; totalTokens: number; requests: number; spendCents: number }>,
   tableWidth: number,
@@ -248,22 +281,24 @@ function buildModelBreakdownTableMarkdown(
     );
   }
 
+  const totalRequests = rows.reduce((sum, row) => sum + row.requests, 0);
+  const totalTokens = rows.reduce((sum, row) => sum + row.totalTokens, 0);
+  const totalSpendCents = rows.reduce((sum, row) => sum + row.spendCents, 0);
+  lines.push(
+    `  <tr>` +
+    `<td align="left"><strong>${t(locale, "total")}</strong></td>` +
+    `<td align="right"><strong>${Math.round(totalRequests)}</strong></td>` +
+    `<td align="right"><strong>${formatTokens(totalTokens)}</strong></td>` +
+    `<td align="right"><strong>${formatDollarsFromCents(totalSpendCents, currency, locale)}</strong></td>` +
+    `</tr>`,
+  );
+
   lines.push(`</table>`, ``);
   return lines.join("\n");
 }
 
-function isOnDemandVisible(onDemand: OnDemandUsage): boolean {
-  return onDemand.state !== "disabled";
-}
-
-function formatOnDemandStatusBar(onDemand: OnDemandUsage): string {
-  return formatOnDemandStatus(
-    onDemand.spendDollars,
-    onDemand.limitDollars,
-    onDemand.state,
-    getCurrency(),
-    getLocale(),
-  );
+function formatOnDemandStatusBar(onDemand: UsagePayload["onDemand"]): string {
+  return formatOnDemandStatus(onDemand, getCurrency(), getLocale());
 }
 
 function getDashboardEvents(now = Date.now()): UsageEvent[] {
@@ -281,14 +316,20 @@ function updateStatusBar(data: UsagePayload) {
   const { minimalMode } = getConfig();
   const locale = getLocale();
   const currency = getCurrency();
+  const showPremiumRequests = shouldShowPremiumRequestsQuota(data.planInfo, data.poolUsage);
 
-  const premiumExhausted = includedRequests.used >= includedRequests.limit;
+  const quotaExhausted = isIncludedQuotaExhausted(data, showPremiumRequests);
   const onDemandVisible = isOnDemandVisible(onDemand);
 
-  if (minimalMode && premiumExhausted && onDemandVisible) {
+  if (minimalMode && quotaExhausted && onDemandVisible) {
     statusBarItem.text = `$(pulse) ${formatOnDemandStatusBar(onDemand)}`;
   } else {
-    statusBarItem.text = `$(pulse) ${formatStatusBarUsageText(data, { onDemandVisible, currency, locale })}`;
+    statusBarItem.text = `$(pulse) ${formatStatusBarUsageText(data, {
+      onDemandVisible,
+      showPremiumRequests,
+      currency,
+      locale,
+    })}`;
   }
 
   const tooltip = new vscode.MarkdownString();
@@ -305,12 +346,14 @@ function updateStatusBar(data: UsagePayload) {
     {
       markdown: (ratio) => progressBarMarkdown(ratio, barW),
       html: (ratio) => progressBarHtml(ratio, barW),
+      segmentedHtml: (segments) => segmentedProgressBarHtml(segments, barW),
       divider: () => summaryDividerHtml(),
     },
     locale,
     Date.now(),
     lastEvents ?? [],
     currency,
+    showPremiumRequests,
   );
   md += `\n`;
 
@@ -435,10 +478,16 @@ async function showDetails() {
     return;
   }
 
-  const { includedRequests, onDemand, resetsAt } = lastData;
+  const { onDemand, resetsAt } = lastData;
   const onDemandVisible = isOnDemandVisible(onDemand);
+  const showPremiumRequests = shouldShowPremiumRequestsQuota(lastData.planInfo, lastData.poolUsage);
 
-  let message = `Requests: ${formatStatusBarUsageText(lastData, { onDemandVisible, currency: getCurrency(), locale: getLocale() })}`;
+  let message = `${formatStatusBarUsageText(lastData, {
+    onDemandVisible,
+    showPremiumRequests,
+    currency: getCurrency(),
+    locale: getLocale(),
+  })}`;
   if (resetsAt) message += ` | ${formatResetCountdown(resetsAt, getLocale())}`;
 
   const action = await vscode.window.showInformationMessage(

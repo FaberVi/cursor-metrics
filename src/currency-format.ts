@@ -1,5 +1,7 @@
 import type { DashboardCurrency, DashboardLocale } from "./dashboard-locale";
 import { DEFAULT_EUR_USD_RATE } from "./dashboard-locale";
+import type { OnDemandUsage } from "./on-demand";
+import { getOnDemandDisplaySpend } from "./on-demand";
 
 function getIntlLocale(locale: DashboardLocale): string {
   return locale === "it" ? "it-IT" : "en-US";
@@ -52,27 +54,29 @@ export function formatMoneyFromCents(
 }
 
 export function formatOnDemandSpend(
-  spendDollars: number,
-  limitDollars: number | null,
-  state: "limited" | "unlimited" | "disabled",
+  onDemand: OnDemandUsage,
   currency: DashboardCurrency,
   locale: DashboardLocale,
 ): string {
-  if (state === "unlimited") {
+  const spendDollars = getOnDemandDisplaySpend(onDemand);
+  if (
+    onDemand.state === "unlimited" ||
+    onDemand.onDemandEnabled === false ||
+    onDemand.breakdown?.isTeamPool
+  ) {
     return formatMoney(spendDollars, currency, locale);
   }
-  return `${formatMoney(spendDollars, currency, locale)} / ${formatMoney(limitDollars ?? 0, currency, locale)}`;
+  return `${formatMoney(spendDollars, currency, locale)} / ${formatMoney(onDemand.limitDollars ?? 0, currency, locale)}`;
 }
 
 export function formatOnDemandStatus(
-  spendDollars: number,
-  limitDollars: number | null,
-  state: "limited" | "unlimited" | "disabled",
+  onDemand: OnDemandUsage,
   currency: DashboardCurrency,
   locale: DashboardLocale,
 ): string {
-  if (state === "unlimited") {
+  const spendDollars = getOnDemandDisplaySpend(onDemand);
+  if (onDemand.state === "unlimited") {
     return formatMoney(spendDollars, currency, locale);
   }
-  return `${formatMoney(spendDollars, currency, locale)}/${formatMoney(limitDollars ?? 0, currency, locale)}`;
+  return `${formatMoney(spendDollars, currency, locale)}/${formatMoney(onDemand.limitDollars ?? 0, currency, locale)}`;
 }

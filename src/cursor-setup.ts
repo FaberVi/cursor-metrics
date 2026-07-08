@@ -108,6 +108,7 @@ export async function ensureSetup(
     );
   }
 
+  const stripeRecord = asRecord(stripe);
   const setup: SetupCache = {
     isTeamMember,
     teamId,
@@ -117,7 +118,8 @@ export async function ensureSetup(
         : totals.limit > 0
           ? totals.limit
           : totals.used,
-    onDemandEnabled: Boolean(asRecord(stripe)?.isOnBillableAuto),
+    onDemandEnabled: Boolean(stripeRecord?.isOnBillableAuto),
+    stripeRecord,
     planInfo: buildPlanInfo({
       isTeamMember,
       limitType: planFields.limitType,

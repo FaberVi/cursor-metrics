@@ -1,6 +1,6 @@
-# Cursor Usage
+# Cursor Usage (Community)
 
-See Cursor usage in your status bar: included requests, Auto/API pool usage, and on-demand spend, live while you work. Click the status bar item to open a full dashboard inside your editor.
+Community-maintained fork of [cursor-metrics](https://github.com/wrick17/cursor-metrics). See Cursor usage in your status bar: included requests, Auto/API pool usage, and on-demand spend, live while you work. Click the status bar item to open a full dashboard inside your editor.
 
 ![Cursor Usage extension tooltip](media/extensions-tooltip.png)
 
@@ -10,7 +10,10 @@ See Cursor usage in your status bar: included requests, Auto/API pool usage, and
 
 ### Status bar
 
-- Compact display (for example: `2000/2000, 61% Auto, 4% API, $0.00`). On Team and Enterprise plans, Auto and API show how much of the included pool each routing mode has consumed.
+- Compact display depends on your plan:
+  - **Team / Enterprise (pool-based):** for example `61% Auto, 100% API, $12.50`
+  - **Legacy personal (request-based):** for example `42/500, $0.00`
+- On pool-based plans, Auto and API show how much of each included pool has been consumed (First-party vs third-party models).
 - Detailed hover tooltip with progress bars, included pool breakdown (Auto/API), **daily budget** (allowance and residual for Auto/API today), reset countdown, and per-model usage.
 - Loading indicator while fresh usage data is being fetched.
 - Smart refresh behavior tied to editor activity and window focus.
@@ -18,7 +21,7 @@ See Cursor usage in your status bar: included requests, Auto/API pool usage, and
 
 ### Dashboard
 
-- **Summary cards** for included requests, on-demand spend, and included pool (Auto / API / total).
+- **Summary cards** for on-demand spend and included pools (Auto / API / total). Legacy request-quota card appears only on older personal plans without pool data.
 - **Included pool card extras** (Team / Enterprise):
   - Projected date each pool hits 100% at the current average consumption rate since cycle start.
   - **Target usage** — cumulative target if spread evenly until reset, compared with actual Auto/API usage.
@@ -35,14 +38,14 @@ See Cursor usage in your status bar: included requests, Auto/API pool usage, and
 
 ## Commands
 
-- `Cursor Usage: Open Dashboard` — open the in-editor dashboard.
-- `Cursor Usage: Show Details` — show a quick usage summary message.
-- `Cursor Usage: Refresh` — force a refresh immediately.
+- `Cursor Usage (Community): Open Dashboard` — open the in-editor dashboard.
+- `Cursor Usage (Community): Show Details` — show a quick usage summary message.
+- `Cursor Usage (Community): Refresh` — force a refresh immediately.
 
 ## Settings
 
 - `cursorUsage.pollInterval` (default: `5`) — minimum refresh cooldown in minutes (`1`, `5`, `10`, `30`, `60`).
-- `cursorUsage.minimalMode` (default: `false`) — when the included pool is exhausted, show only on-demand spend in the status bar instead of the full summary.
+- `cursorUsage.minimalMode` (default: `false`) — when included usage is exhausted (pool total on Team/Enterprise, or legacy request quota on older personal plans), show only on-demand spend in the status bar instead of the full summary.
 - `cursorUsage.usageDuration` (default: `billingCycle`) — tooltip model-usage range: `1d`, `7d`, `30d`, or `billingCycle`.
 - `cursorUsage.modelBreakdownSortBy` (default: `tokens`) — sort column for usage-by-model tables: `model`, `requests`, `tokens`, `spend`.
 - `cursorUsage.modelBreakdownSortOrder` (default: `desc`) — `asc` or `desc`.
@@ -84,7 +87,7 @@ Press **F5** in VS Code/Cursor with the **Run Cursor Usage Extension** launch co
 ## Authors & maintainers
 
 - **Created by** [wrick17](https://github.com/wrick17) — original extension and [cursor-metrics](https://github.com/wrick17/cursor-metrics) repository.
-- **Maintained by** [Vincenzo Fabiano (FaberVi)](https://github.com/FaberVi) — pool analytics, dashboard i18n, pacing projections, and ongoing improvements.
+- **Maintained by** [Vincenzo Fabiano (FaberVi)](https://github.com/FaberVi) — community fork, pool analytics, dashboard i18n, pacing projections, and ongoing improvements. Published on the VS Marketplace as [fabervi](https://marketplace.visualstudio.com/publishers/fabervi).
 
 ## License
 

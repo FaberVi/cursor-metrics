@@ -67,6 +67,7 @@ describe("extractUsageFromSummary", () => {
 
     expect(payload!.onDemand).toEqual({
       state: "limited",
+      onDemandEnabled: true,
       spendDollars: 123.45,
       limitDollars: 500,
     });

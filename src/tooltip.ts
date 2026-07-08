@@ -3,25 +3,25 @@ import type { DashboardCurrency, DashboardLocale } from "./dashboard-locale";
 import { formatOnDemandSpend } from "./currency-format";
 import { getDurationLabel, t, tf } from "./i18n";
 import type { UsageDuration } from "./model-breakdown";
+import {
+  formatOnDemandBreakdownFooter,
+  getOnDemandProgressSegments,
+  getOnDemandRatio,
+  type OnDemandUsage,
+} from "./on-demand";
 import { buildPoolTodayPaceMarkdown, buildPoolUsageMarkdown } from "./pool-usage";
 import { buildPoolUsageSeries } from "./pool-usage-series";
 
 type IncludedRequestsUsage = UsagePayload["includedRequests"];
-type OnDemandUsage = UsagePayload["onDemand"];
 
 type ProgressBarRenderer = {
   markdown: (ratio: number) => string;
   html: (ratio: number) => string;
+  segmentedHtml?: (segments: Array<{ ratio: number; opacity: number }>) => string;
   divider: () => string;
 };
 
 export const OPEN_DURATION_SETTING_COMMAND = "cursor-usage.openDurationSetting";
-
-function getOnDemandRatio(onDemand: OnDemandUsage): number | null {
-  if (onDemand.state !== "limited") return null;
-  if (onDemand.limitDollars === null || onDemand.limitDollars <= 0) return null;
-  return onDemand.spendDollars / onDemand.limitDollars;
-}
 
 type SummaryColumn = {
   label: string;
@@ -31,20 +31,6 @@ type SummaryColumn = {
 
 function formatIncludedValue(includedRequests: IncludedRequestsUsage): string {
   return `${includedRequests.used} / ${includedRequests.limit}`;
-}
-
-function formatOnDemandValue(
-  onDemand: OnDemandUsage,
-  currency: DashboardCurrency,
-  locale: DashboardLocale,
-): string {
-  return formatOnDemandSpend(
-    onDemand.spendDollars,
-    onDemand.limitDollars,
-    onDemand.state,
-    currency,
-    locale,
-  );
 }
 
 function buildSummaryTable(columns: SummaryColumn[], renderProgressBar: ProgressBarRenderer): string {
@@ -69,47 +55,68 @@ function buildSummaryTable(columns: SummaryColumn[], renderProgressBar: Progress
   ].join("\n");
 }
 
+function renderOnDemandFooter(
+  onDemand: OnDemandUsage,
+  renderProgressBar: ProgressBarRenderer,
+  locale: DashboardLocale,
+): string {
+  const breakdownFooter = formatOnDemandBreakdownFooter(onDemand);
+  const segments = getOnDemandProgressSegments(onDemand);
+  if (segments && renderProgressBar.segmentedHtml) {
+    const bar = renderProgressBar.segmentedHtml(segments);
+    return breakdownFooter
+      ? `${bar}<br/><sub>${breakdownFooter}</sub>`
+      : bar;
+  }
+
+  const spendRatio = getOnDemandRatio(onDemand);
+  if (spendRatio === null) {
+    return breakdownFooter ? `<sub>${breakdownFooter}</sub>` : `<sub>${t(locale, "spendUnavailable")}</sub>`;
+  }
+  return renderProgressBar.html(spendRatio);
+}
+
 function buildSummaryColumns(
   includedRequests: IncludedRequestsUsage,
   onDemand: OnDemandUsage,
   renderProgressBar: ProgressBarRenderer,
   locale: DashboardLocale,
   currency: DashboardCurrency,
+  showPremiumRequests: boolean,
 ): SummaryColumn[] {
-  const reqRatio = includedRequests.limit > 0 ? includedRequests.used / includedRequests.limit : 0;
-  const includedColumn: SummaryColumn = {
-    label: t(locale, "included"),
-    value: formatIncludedValue(includedRequests),
-    footer: renderProgressBar.html(reqRatio),
-  };
+  const columns: SummaryColumn[] = [];
+
+  if (showPremiumRequests) {
+    const reqRatio = includedRequests.limit > 0 ? includedRequests.used / includedRequests.limit : 0;
+    columns.push({
+      label: t(locale, "included"),
+      value: formatIncludedValue(includedRequests),
+      footer: renderProgressBar.html(reqRatio),
+    });
+  }
 
   if (onDemand.state === "disabled") {
-    return [includedColumn];
+    return columns;
   }
 
   if (onDemand.state === "unlimited") {
-    return [
-      includedColumn,
-      {
-        label: t(locale, "onDemand"),
-        value: formatOnDemandValue(onDemand, currency, locale),
-        footer: `<sub>${t(locale, "unlimited")}</sub>`,
-      },
-    ];
+    const segments = getOnDemandProgressSegments(onDemand);
+    columns.push({
+      label: t(locale, "onDemand"),
+      value: formatOnDemandSpend(onDemand, currency, locale),
+      footer: segments
+        ? renderOnDemandFooter(onDemand, renderProgressBar, locale)
+        : `<sub>${t(locale, "unlimited")}</sub>`,
+    });
+    return columns;
   }
 
-  const spendRatio = getOnDemandRatio(onDemand);
-
-  return [
-    includedColumn,
-    {
-      label: t(locale, "onDemand"),
-      value: formatOnDemandValue(onDemand, currency, locale),
-      footer: spendRatio === null
-        ? `<sub>${t(locale, "spendUnavailable")}</sub>`
-        : renderProgressBar.html(spendRatio),
-    },
-  ];
+  columns.push({
+    label: t(locale, "onDemand"),
+    value: formatOnDemandSpend(onDemand, currency, locale),
+    footer: renderOnDemandFooter(onDemand, renderProgressBar, locale),
+  });
+  return columns;
 }
 
 export function buildUsageOverviewMarkdown(
@@ -119,12 +126,20 @@ export function buildUsageOverviewMarkdown(
   now = Date.now(),
   events: UsageEvent[] = [],
   currency: DashboardCurrency = "usd",
+  showPremiumRequests = true,
 ): string {
   const { includedRequests, onDemand, poolUsage, resetsAt } = data;
-  let md = buildSummaryTable(
-    buildSummaryColumns(includedRequests, onDemand, renderProgressBar, locale, currency),
+  const summaryColumns = buildSummaryColumns(
+    includedRequests,
+    onDemand,
     renderProgressBar,
+    locale,
+    currency,
+    showPremiumRequests,
   );
+  let md = summaryColumns.length > 0
+    ? buildSummaryTable(summaryColumns, renderProgressBar)
+    : "";
   if (poolUsage) {
     md += buildPoolUsageMarkdown(poolUsage, renderProgressBar, locale);
     if (events.length > 0) {

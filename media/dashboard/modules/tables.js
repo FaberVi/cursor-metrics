@@ -293,6 +293,7 @@ export function renderBreakdown() {
 
   if (rows.length === 0) {
     ui.breakdownBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:24px;" class="muted">No usage in this range</td></tr>';
+    if (ui.breakdownFoot) ui.breakdownFoot.innerHTML = "";
     return;
   }
   ui.breakdownBody.innerHTML = rows.map((r) => {
@@ -305,6 +306,25 @@ export function renderBreakdown() {
       '<td class="num">' + formatCents(r.spendCents) + '</td>' +
     '</tr>';
   }).join("");
+
+  const totals = rows.reduce(
+    (acc, r) => {
+      acc.requests += r.requests || 0;
+      acc.totalTokens += r.totalTokens || 0;
+      acc.spendCents += r.spendCents || 0;
+      return acc;
+    },
+    { requests: 0, totalTokens: 0, spendCents: 0 },
+  );
+  if (ui.breakdownFoot) {
+    ui.breakdownFoot.innerHTML =
+      '<tr class="breakdown-total">' +
+      '<td>' + escapeHtml(t("total")) + '</td>' +
+      '<td class="num">' + formatRequests(totals.requests) + '</td>' +
+      '<td class="num">' + formatTokens(totals.totalTokens) + '</td>' +
+      '<td class="num">' + formatCents(totals.spendCents) + '</td>' +
+      "</tr>";
+  }
 }
 
 function csvCell(v) {

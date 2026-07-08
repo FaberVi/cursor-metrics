@@ -16,6 +16,7 @@ export const ui = {
   tableBody: document.querySelector("#events-table tbody"),
   tableHead: document.querySelector("#events-table thead"),
   breakdownBody: document.querySelector("#breakdown-table tbody"),
+  breakdownFoot: document.querySelector("#breakdown-table tfoot"),
   breakdownHead: document.querySelector("#breakdown-table thead"),
   breakdownRangeLabel: document.getElementById("breakdown-range-label"),
   pagination: document.getElementById("pagination"),
@@ -131,6 +132,10 @@ export const PALETTE = [
   "#f0d99b",
   "#c9d4f0",
 ];
+
+export function persistGlobalUi(patch) {
+  vscode.postMessage({ type: "saveUiPreferences", preferences: patch });
+}
 
 export function persistLocal() {
   vscode.setState({

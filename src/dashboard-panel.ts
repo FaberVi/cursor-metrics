@@ -12,6 +12,11 @@ import {
 import { getDashboardLocale } from "./dashboard-locale-state";
 import { getDashboardCurrency } from "./dashboard-currency-state";
 import { loadConversationMessages } from "./conversation-messages";
+import {
+  loadDashboardUiPreferences,
+  saveDashboardUiPreferences,
+  type DashboardUiPreferences,
+} from "./dashboard-ui-state";
 import type { UsageDuration } from "./model-breakdown";
 import type { DashboardState, UsageFilter } from "./dashboard-state";
 
@@ -106,6 +111,7 @@ export class DashboardPanel {
       async (msg) => {
         if (!msg || typeof msg !== "object") return;
         if (msg.type === "ready") {
+          this.postUiPreferences(loadDashboardUiPreferences(this.context));
           const savedLocale = this.context.globalState.get<DashboardLocale>(DASHBOARD_LOCALE_KEY);
           if (isDashboardLocale(savedLocale)) {
             this.panel.webview.postMessage({ type: "init", locale: savedLocale });
@@ -140,6 +146,12 @@ export class DashboardPanel {
             }
           } finally {
             this.panel.webview.postMessage({ type: "previewLoading", on: false });
+          }
+        } else if (msg.type === "saveUiPreferences") {
+          const patch = msg.preferences as DashboardUiPreferences | undefined;
+          if (patch && typeof patch === "object") {
+            const saved = await saveDashboardUiPreferences(this.context, patch);
+            this.postUiPreferences(saved);
           }
         } else if (msg.type === "syncDashboardPrefs") {
           if (isUsageDuration(msg.range)) this.dashboardPrefs.range = msg.range;
@@ -190,6 +202,10 @@ export class DashboardPanel {
       locale: getDashboardLocale(this.context),
       currency: getDashboardCurrency(this.context),
     });
+  }
+
+  postUiPreferences(preferences: DashboardUiPreferences): void {
+    this.panel.webview.postMessage({ type: "uiPreferences", preferences });
   }
 
   postLoading(on: boolean): void {
@@ -383,6 +399,7 @@ export class DashboardPanel {
             </tr>
           </thead>
           <tbody></tbody>
+          <tfoot></tfoot>
         </table>
       </div>
     </div>

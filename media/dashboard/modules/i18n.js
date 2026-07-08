@@ -60,6 +60,7 @@ const MESSAGES = {
     colRequests: "Requests",
     colTokens: "Tokens",
     colSpend: "Spend",
+    total: "Total",
     colDate: "Date",
     colType: "Type",
     poolDailyPace: "Daily balance",
@@ -70,6 +71,10 @@ const MESSAGES = {
     includedRequests: "Included-Request Usage",
     onDemandUsage: "On-Demand Usage",
     includedPool: "Included Pool",
+    billingCycle: "Billing Cycle",
+    billingCycleUntilReset: "until reset",
+    cycleElapsed: "of cycle elapsed",
+    billingCycleUnknown: "Reset date unavailable",
     totalUsed: "total used",
     unlimited: "Unlimited",
     onDemandFooter: "Pay for extra usage beyond your plan limits",
@@ -117,6 +122,8 @@ const MESSAGES = {
       "Estimated date each pool reaches 100% based on average daily consumption since the billing cycle started. If usage stays at the same rate, this is when the pool would run out before reset.",
     helpPoolPace:
       "Indicative daily budget to spread pool usage evenly until billing reset. Residual shows how much you could still use today; a negative value means you exceeded today's budget.",
+    helpBillingCycle:
+      "Days remaining in your current billing cycle and how much of the cycle has elapsed. Pool quotas and on-demand limits reset on the date shown.",
     recommendedPace: "Target usage",
     recommendedPaceDesc: "Even spread until reset — compare target vs actual usage",
     recTarget: "target",
@@ -184,6 +191,7 @@ const MESSAGES = {
     colRequests: "Richieste",
     colTokens: "Token",
     colSpend: "Spesa",
+    total: "Totale",
     colDate: "Data",
     colType: "Tipo",
     poolDailyPace: "Saldo giornaliero",
@@ -194,6 +202,10 @@ const MESSAGES = {
     includedRequests: "Richieste incluse",
     onDemandUsage: "Utilizzo on-demand",
     includedPool: "Pool incluso",
+    billingCycle: "Ciclo di fatturazione",
+    billingCycleUntilReset: "al reset",
+    cycleElapsed: "del ciclo trascorso",
+    billingCycleUnknown: "Data reset non disponibile",
     totalUsed: "totale usato",
     unlimited: "Illimitato",
     onDemandFooter: "Spesa extra oltre i limiti del piano",
@@ -241,6 +253,8 @@ const MESSAGES = {
       "Data stimata in cui ogni pool raggiunge il 100% in base al consumo medio giornaliero dall'inizio del ciclo. Se il consumo resta uguale, \u00e8 quando il pool si esaurirebbe prima del reset.",
     helpPoolPace:
       "Budget giornaliero indicativo per distribuire il pool fino al reset. Il residuo indica quanto puoi ancora usare oggi; un valore negativo significa che hai superato il budget di oggi.",
+    helpBillingCycle:
+      "Giorni rimanenti nel ciclo di fatturazione corrente e quota del ciclo gi\u00e0 trascorsa. I pool inclusi e i limiti on-demand si azzerano alla data indicata.",
     recommendedPace: "Obiettivo cumulativo",
     recommendedPaceDesc: "Distribuzione uniforme fino al reset — confronta obiettivo vs utilizzo reale",
     recTarget: "obiettivo",
@@ -301,6 +315,7 @@ export function cardHelpText(key) {
     poolDepletion: "helpPoolDepletion",
     poolPace: "helpPoolPace",
     poolRecommended: "helpPoolRecommended",
+    billingCycle: "helpBillingCycle",
   };
   return t(map[key] || key);
 }

@@ -3,6 +3,7 @@
   EVENTS_PAGE_SIZES,
   local,
   paginateList,
+  persistGlobalUi,
   persistLocal,
   refs,
   resetEventsPage,
@@ -42,6 +43,15 @@ function closeActivityDetail() {
   closeConversationDetail();
 }
 
+function applyUiPreferences(prefs) {
+  if (!prefs || typeof prefs !== "object") return;
+  if (prefs.range) local.range = prefs.range;
+  if (prefs.usageFilter) local.usageFilter = prefs.usageFilter;
+  if (prefs.metric) local.metric = prefs.metric;
+  persistLocal();
+  if (refs.state) renderAll();
+}
+
 function renderAll() {
   if (!refs.state) return;
   if (ui.currencySelect) {
@@ -73,6 +83,7 @@ ui.rangeSelector.addEventListener("click", (e) => {
   local.range = btn.dataset.range;
   resetEventsPage();
   persistLocal();
+  persistGlobalUi({ range: local.range });
   syncDashboardPrefs();
   renderAll();
 });
@@ -81,6 +92,7 @@ ui.usageFilter.addEventListener("change", () => {
   local.usageFilter = ui.usageFilter.value;
   resetEventsPage();
   persistLocal();
+  persistGlobalUi({ usageFilter: local.usageFilter });
   syncDashboardPrefs();
   renderChart();
   renderBreakdown();
@@ -90,6 +102,7 @@ ui.usageFilter.addEventListener("change", () => {
 ui.metricFilter.addEventListener("change", () => {
   local.metric = ui.metricFilter.value;
   persistLocal();
+  persistGlobalUi({ metric: local.metric });
   renderChart();
 });
 
@@ -221,7 +234,9 @@ document.addEventListener("keydown", (e) => {
 window.addEventListener("message", (event) => {
   const msg = event.data;
   if (!msg || typeof msg !== "object") return;
-  if (msg.type === "init" && (msg.locale === "en" || msg.locale === "it")) {
+  if (msg.type === "uiPreferences") {
+    applyUiPreferences(msg.preferences);
+  } else if (msg.type === "init" && (msg.locale === "en" || msg.locale === "it")) {
     local.locale = msg.locale;
     persistLocal();
     applyStaticTranslations();

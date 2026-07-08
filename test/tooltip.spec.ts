@@ -106,12 +106,37 @@ describe("buildUsageOverviewMarkdown", () => {
       },
       progressBar,
       "en",
+      Date.now(),
+      [],
+      "usd",
+      false,
     );
 
     expect(markdown).toContain("Included pool");
     expect(markdown).toContain("31% total used");
     expect(markdown).toContain("Auto");
     expect(markdown).toContain("API");
+    expect(markdown).not.toContain("500 / 500");
+  });
+
+  it("omits legacy request column when showPremiumRequests is false", () => {
+    const markdown = buildUsageOverviewMarkdown(
+      {
+        includedRequests: { used: 2000, limit: 2000 },
+        onDemand: { state: "limited", spendDollars: 12.5, limitDollars: 100 },
+        poolUsage: { autoPercentUsed: 61, apiPercentUsed: 100, totalPercentUsed: 80 },
+      },
+      progressBar,
+      "en",
+      Date.now(),
+      [],
+      "usd",
+      false,
+    );
+
+    expect(markdown).not.toContain("2000 / 2000");
+    expect(markdown).toContain("On-demand");
+    expect(markdown).toContain("$12.50 / $100.00");
   });
 
   it("includes today's suggested pace when pool usage and events are available", () => {
@@ -169,6 +194,8 @@ describe("buildUsageOverviewMarkdown", () => {
       "en",
       now,
       events,
+      "usd",
+      false,
     );
 
     expect(markdown).toContain("Daily budget");

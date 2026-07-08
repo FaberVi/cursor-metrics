@@ -96,7 +96,7 @@ export async function getCursorToken(): Promise<AuthInfo | null> {
   const email = authValues["cursorAuth/cachedEmail"] ?? null;
   apiLog(`Cached email: ${email}`);
 
-  const info = { userId, sessionToken, email };
+  const info = { userId, accessToken: jwt, sessionToken, email };
   cachedAuth = { info, ts: Date.now(), sessionToken };
   return info;
 }

@@ -49,13 +49,36 @@ describe("buildDashboardState", () => {
     expect(state.data).toBe(sampleData);
     expect(state.events.length).toBe(5);
     expect(state.isTeamMember).toBeTrue();
+    expect(state.showPremiumRequests).toBeTrue();
     expect(state.quotaAwareEventDisplay).toBeTrue();
     expect(state.poolUsageSeries).toBeNull();
     expect(state.poolDepletion).toBeNull();
     expect(state.poolRecommended).toBeNull();
     expect(state.error).toBeNull();
     expect(state.resetsAt).toBeNull();
-    expect(state.cardHelp.includedRequests).toContain("billing cycle");
+    expect(state.cardHelp.includedRequests).toContain("Legacy");
+  });
+
+  it("hides legacy request counter for team accounts with pool usage", () => {
+    const teamData: UsagePayload = {
+      ...sampleData,
+      planInfo: {
+        accountType: "team",
+        planKind: "enterprise",
+        seatType: null,
+        tier: "Enterprise",
+        priceLabel: null,
+        displayName: "Enterprise",
+      },
+      poolUsage: { autoPercentUsed: 50, apiPercentUsed: 100, totalPercentUsed: 75 },
+    };
+    const state = buildDashboardState(teamData, [], [], true, null, now);
+    expect(state.showPremiumRequests).toBeFalse();
+  });
+
+  it("shows legacy request counter for personal accounts without pool usage", () => {
+    const state = buildDashboardState(sampleData, [], [], false, null, now);
+    expect(state.showPremiumRequests).toBeTrue();
   });
 
   it("propagates resetsAt from data", () => {

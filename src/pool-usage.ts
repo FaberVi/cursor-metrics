@@ -17,13 +17,18 @@ export function formatStatusBarUsageText(
   data: Pick<UsagePayload, "includedRequests" | "onDemand" | "poolUsage">,
   opts: {
     onDemandVisible: boolean;
+    showPremiumRequests?: boolean;
     currency?: DashboardCurrency;
     locale?: DashboardLocale;
   },
 ): string {
   const currency = opts.currency ?? "usd";
   const locale = opts.locale ?? "en";
-  const parts = [`${data.includedRequests.used}/${data.includedRequests.limit}`];
+  const parts: string[] = [];
+
+  if (opts.showPremiumRequests !== false) {
+    parts.push(`${data.includedRequests.used}/${data.includedRequests.limit}`);
+  }
 
   if (data.poolUsage) {
     parts.push(`${formatPercent(data.poolUsage.autoPercentUsed)}% Auto`);
@@ -31,15 +36,7 @@ export function formatStatusBarUsageText(
   }
 
   if (opts.onDemandVisible) {
-    parts.push(
-      formatOnDemandStatus(
-        data.onDemand.spendDollars,
-        data.onDemand.limitDollars,
-        data.onDemand.state,
-        currency,
-        locale,
-      ),
-    );
+    parts.push(formatOnDemandStatus(data.onDemand, currency, locale));
   }
 
   return parts.join(", ");

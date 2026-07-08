@@ -10,6 +10,7 @@ import type {
   UsagePayload,
 } from "./cursor-api-types";
 import { asRecord, MAX_STORE_SYNC_PAGES, MAX_USAGE_EVENT_PAGES, nextMonth, toNumber, withTimeout } from "./cursor-api-utils";
+import { billingCycleEndIso, fetchCurrentPeriodUsage } from "./cursor-period-usage";
 import { ensureSetup, withPlanInfo } from "./cursor-setup";
 import {
   extractTeamRequestLimit,
@@ -19,63 +20,116 @@ import {
   mergeTeamIncludedRequests,
   parseUsageEvent,
 } from "./cursor-usage-parsing";
+import {
+  buildOnDemandFromSpendLimit,
+  buildTeamOnDemandFallback,
+  finalizeOnDemandUsage,
+  mergeOnDemandUsage,
+  resolveOnDemandEnabled,
+  resolveOnDemandFromUsageSummary,
+  type OnDemandUsage,
+} from "./on-demand";
 
-async function fetchUsageSummary(headers: CursorHeaders): Promise<unknown | null> {
+async function fetchUsageSummary(headers: CursorHeaders): Promise<Record<string, unknown> | null> {
   const res = await fetch("https://cursor.com/api/usage-summary", withTimeout({ headers }));
   if (!res.ok) {
     apiLog(`usage-summary failed: ${res.status}`);
     return null;
   }
-  return res.json();
+  return asRecord(await res.json());
 }
 
-async function enrichTeamOnDemandFromSpend(
+function buildSoloOnDemand(
+  setup: SetupCache,
+  periodUsage: Record<string, unknown> | null,
+  usageSummary: Record<string, unknown> | null,
+  mySpendCents = 0,
+): OnDemandUsage {
+  const usageSummaryEnabled = resolveOnDemandFromUsageSummary(usageSummary, false);
+  const onDemandEnabled = resolveOnDemandEnabled(
+    setup.stripeRecord,
+    periodUsage,
+    null,
+    usageSummaryEnabled,
+  );
+  return finalizeOnDemandUsage(
+    buildOnDemandFromSpendLimit(periodUsage?.spendLimitUsage, onDemandEnabled, mySpendCents),
+    onDemandEnabled,
+  );
+}
+
+function buildTeamOnDemand(
+  setup: SetupCache,
+  periodUsage: Record<string, unknown> | null,
+  usageSummary: Record<string, unknown> | null,
+  members: unknown[],
+  meRecord: Record<string, unknown>,
+  dataRecord: Record<string, unknown>,
+): OnDemandUsage {
+  const spendCents = toNumber(meRecord.spendCents) ?? 0;
+  const usageSummaryEnabled = resolveOnDemandFromUsageSummary(usageSummary, true);
+  const onDemandEnabled = resolveOnDemandEnabled(
+    setup.stripeRecord,
+    periodUsage,
+    dataRecord,
+    usageSummaryEnabled,
+  );
+  const onDemandFromPeriod = buildOnDemandFromSpendLimit(
+    periodUsage?.spendLimitUsage,
+    onDemandEnabled,
+    spendCents,
+  );
+  const onDemandFallback = buildTeamOnDemandFallback(members, meRecord, dataRecord, onDemandEnabled);
+  const onDemand = finalizeOnDemandUsage(
+    mergeOnDemandUsage(onDemandFromPeriod, onDemandFallback, onDemandEnabled),
+    onDemandEnabled,
+  );
+  const spendLimitLog = asRecord(periodUsage?.spendLimitUsage);
+  apiLog(
+    `On-demand state: ${onDemand.state}, enabled=${onDemandEnabled}, summary.onDemand=${usageSummaryEnabled ?? "n/a"}, period.enabled=${periodUsage?.enabled ?? "n/a"}${onDemand.breakdown?.isTeamPool ? " (team pool)" : ""}${spendLimitLog ? `, spendLimit={pooledLimit:${spendLimitLog.pooledLimit ?? "n/a"}, pooledUsed:${spendLimitLog.pooledUsed ?? "n/a"}, pooledRemaining:${spendLimitLog.pooledRemaining ?? "n/a"}}` : ""}`,
+  );
+  return onDemand;
+}
+
+async function enrichPayloadOnDemand(
   auth: AuthInfo,
-  headers: CursorHeaders,
   setup: SetupCache,
   payload: UsagePayload,
+  usageSummary: Record<string, unknown> | null,
 ): Promise<UsagePayload> {
-  if (!setup.teamId || payload.onDemand.state !== "unlimited") {
-    return payload;
-  }
+  const periodUsage = await fetchCurrentPeriodUsage(auth.accessToken);
 
-  const teamSpendRes = await fetch("https://cursor.com/api/dashboard/get-team-spend", withTimeout({
-    method: "POST",
-    headers,
-    body: JSON.stringify({ teamId: setup.teamId }),
-  }));
-  if (!teamSpendRes.ok) {
-    apiLog(`get-team-spend enrichment skipped: ${teamSpendRes.status}`);
-    return payload;
-  }
+  if (setup.isTeamMember && setup.teamId) {
+    const teamSpendRes = await fetch("https://cursor.com/api/dashboard/get-team-spend", withTimeout({
+      method: "POST",
+      headers: cursorHeaders(auth.sessionToken),
+      body: JSON.stringify({ teamId: setup.teamId }),
+    }));
+    if (!teamSpendRes.ok) {
+      apiLog(`get-team-spend enrichment skipped: ${teamSpendRes.status}`);
+      return payload;
+    }
 
-  const data = await teamSpendRes.json();
-  const dataRecord = asRecord(data) ?? {};
-  const members: unknown[] = Array.isArray(dataRecord.teamMemberSpend) ? dataRecord.teamMemberSpend : [];
-  const me = members.find((member) => {
-    const record = asRecord(member);
-    return record && (record.email === auth.email || String(record.userId) === auth.userId);
-  });
-  if (!me) return payload;
+    const dataRecord = asRecord(await teamSpendRes.json()) ?? {};
+    const members: unknown[] = Array.isArray(dataRecord.teamMemberSpend) ? dataRecord.teamMemberSpend : [];
+    const me = members.find((member) => {
+      const record = asRecord(member);
+      return record && (record.email === auth.email || String(record.userId) === auth.userId);
+    });
+    if (!me) return payload;
 
-  const meRecord = asRecord(me) ?? {};
-  const spendCents = toNumber(meRecord.spendCents);
-  const hardLimit = toNumber(meRecord.hardLimitOverrideDollars);
-  if (spendCents === null && hardLimit === null) return payload;
-
-  const spendDollars = (spendCents ?? payload.onDemand.spendDollars * 100) / 100;
-  if (!setup.onDemandEnabled) {
-    return { ...payload, onDemand: { state: "disabled", spendDollars: 0, limitDollars: null } };
-  }
-  if (hardLimit !== null && hardLimit > 0) {
+    const meRecord = asRecord(me) ?? {};
     return {
       ...payload,
-      onDemand: { state: "limited", spendDollars, limitDollars: hardLimit },
+      onDemand: buildTeamOnDemand(setup, periodUsage, usageSummary, members, meRecord, dataRecord),
+      resetsAt: billingCycleEndIso(periodUsage) ?? payload.resetsAt,
     };
   }
+
   return {
     ...payload,
-    onDemand: { state: "unlimited", spendDollars, limitDollars: null },
+    onDemand: buildSoloOnDemand(setup, periodUsage, usageSummary),
+    resetsAt: billingCycleEndIso(periodUsage) ?? payload.resetsAt,
   };
 }
 
@@ -84,13 +138,15 @@ async function fetchTeamUsage(
   headers: CursorHeaders,
   setup: SetupCache,
 ): Promise<UsagePayload | null> {
-  const [teamSpendRes, usageRes] = await Promise.all([
+  const [teamSpendRes, usageRes, usageSummary, periodUsage] = await Promise.all([
     fetch("https://cursor.com/api/dashboard/get-team-spend", withTimeout({
       method: "POST",
       headers,
       body: JSON.stringify({ teamId: setup.teamId }),
     })),
     fetch(`https://cursor.com/api/usage?user=${auth.userId}`, withTimeout({ headers })),
+    fetchUsageSummary(headers),
+    fetchCurrentPeriodUsage(auth.accessToken),
   ]);
 
   if (!teamSpendRes.ok) {
@@ -134,29 +190,16 @@ async function fetchTeamUsage(
   const { used, limit, usedSource, limitSource } = merged;
   apiLog(`Team request source: used=${usedSource}, limit=${limitSource}`);
 
-  const spendCents = toNumber(meRecord.spendCents) ?? 0;
-  const spendDollars = spendCents / 100;
-  const hardLimit = toNumber(meRecord.hardLimitOverrideDollars);
-  const onDemandState = !setup.onDemandEnabled
-    ? "disabled"
-    : hardLimit !== null && hardLimit > 0
-      ? "limited"
-      : "unlimited";
-  const limitDollars = onDemandState === "limited" ? hardLimit : null;
-  apiLog(`On-demand state: ${onDemandState}`);
+  const onDemand = buildTeamOnDemand(setup, periodUsage, usageSummary, members, meRecord, dataRecord);
 
   const result: UsagePayload = {
     includedRequests: {
       used,
       limit,
     },
-    onDemand: {
-      state: onDemandState,
-      spendDollars,
-      limitDollars,
-    },
+    onDemand,
     poolUsage: null,
-    resetsAt,
+    resetsAt: billingCycleEndIso(periodUsage) ?? resetsAt,
     planInfo: null,
   };
 
@@ -176,21 +219,11 @@ async function fetchSoloUsage(
   headers: CursorHeaders,
   setup: SetupCache,
 ): Promise<UsagePayload | null> {
-  const [usageRes, summaryRes] = await Promise.all([
+  const [usageRes, periodUsage, usageSummary] = await Promise.all([
     fetch(`https://cursor.com/api/usage?user=${auth.userId}`, withTimeout({ headers })),
-    fetch("https://cursor.com/api/usage-summary", withTimeout({ headers })),
+    fetchCurrentPeriodUsage(auth.accessToken),
+    fetchUsageSummary(headers),
   ]);
-
-  if (summaryRes.ok) {
-    const summary = await summaryRes.json();
-    const fromSummary = extractUsageFromSummary(summary, setup.onDemandEnabled);
-    if (fromSummary && (fromSummary.includedRequests.limit > 0 || fromSummary.includedRequests.used > 0)) {
-      apiLog(
-        `Solo usage-summary: ${fromSummary.includedRequests.used}/${fromSummary.includedRequests.limit} reqs`,
-      );
-      return fromSummary;
-    }
-  }
 
   if (!usageRes.ok) {
     apiLog(`Usage API failed: ${usageRes.status}`);
@@ -200,10 +233,7 @@ async function fetchSoloUsage(
   const usage = await usageRes.json();
   const totals = extractUsageTotals(usage);
   const resetsAt = usage.startOfMonth ? nextMonth(usage.startOfMonth) : null;
-
-  const onDemand = setup.onDemandEnabled
-    ? { state: "unlimited" as const, spendDollars: 0, limitDollars: null }
-    : { state: "disabled" as const, spendDollars: 0, limitDollars: null };
+  const onDemand = buildSoloOnDemand(setup, periodUsage, usageSummary);
 
   const result: UsagePayload = {
     includedRequests: {
@@ -212,7 +242,7 @@ async function fetchSoloUsage(
     },
     onDemand,
     poolUsage: null,
-    resetsAt,
+    resetsAt: billingCycleEndIso(periodUsage) ?? resetsAt,
     planInfo: null,
   };
 
@@ -243,10 +273,7 @@ export async function fetchUsageData(): Promise<UsagePayload | null> {
       apiLog(
         `Using usage-summary: ${fromSummary.includedRequests.used}/${fromSummary.includedRequests.limit} reqs`,
       );
-      if (setup.isTeamMember) {
-        return withPlanInfo(await enrichTeamOnDemandFromSpend(auth, headers, setup, fromSummary), setup);
-      }
-      return withPlanInfo(fromSummary, setup);
+      return withPlanInfo(await enrichPayloadOnDemand(auth, setup, fromSummary, summary), setup);
     }
     apiLog("usage-summary returned no usable plan limits; falling back to legacy endpoints");
   }

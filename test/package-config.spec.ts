@@ -16,7 +16,8 @@ describe("package configuration", () => {
   });
 
   it("keeps the display name while using a unique VS Marketplace package id", () => {
-    expect(packageJson.displayName).toBe("Cursor Usage");
+    expect(packageJson.displayName).toBe("Cursor Usage (Community)");
+    expect(packageJson.publisher).toBe("fabervi");
     expect(packageJson.scripts["package:vsm"]).toContain("cursor-usage-auto");
     expect(packageJson.scripts["publish:vsm"]).toContain("cursor-usage-auto");
   });

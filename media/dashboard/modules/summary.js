@@ -1,4 +1,4 @@
-﻿import { refs, ui } from "./core.js";
+﻿import { refs, ui, local } from "./core.js";
 import { cardHelpText, getDateLocale, t } from "./i18n.js";
 import {
   escapeHtml,
@@ -7,6 +7,63 @@ import {
   formatPlanPriceText,
   formatResetCountdown,
 } from "./format.js";
+
+const DAY_MS = 86_400_000;
+
+function getBillingCycleMeta(resetAtIso) {
+  if (!resetAtIso) return null;
+  const reset = new Date(resetAtIso);
+  if (Number.isNaN(reset.getTime())) return null;
+  const cycleStart = new Date(resetAtIso);
+  cycleStart.setMonth(cycleStart.getMonth() - 1);
+  const startMs = cycleStart.getTime();
+  const resetMs = reset.getTime();
+  const now = Date.now();
+  const totalMs = resetMs - startMs;
+  if (totalMs <= 0) return null;
+  const elapsedMs = Math.max(0, now - startMs);
+  const pct = Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
+  const daysLeft = Math.max(0, Math.ceil((resetMs - now) / DAY_MS));
+  return { pct, daysLeft, resetMs };
+}
+
+function formatBillingCycleValue(daysLeft) {
+  if (local.locale === "it") {
+    return daysLeft + (daysLeft === 1 ? " giorno" : " giorni");
+  }
+  return daysLeft + " day" + (daysLeft === 1 ? "" : "s");
+}
+
+function renderBillingCycleCard(resetAtIso) {
+  const meta = getBillingCycleMeta(resetAtIso);
+  if (!meta) {
+    return (
+      '<div class="card">' +
+        cardLabel(t("billingCycle"), "billingCycle") +
+        '<div class="card-value muted">' + escapeHtml(t("billingCycleUnknown")) + "</div>" +
+      "</div>"
+    );
+  }
+
+  const resetFormatted = new Date(meta.resetMs).toLocaleDateString(getDateLocale(), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const footerText = local.locale === "it"
+    ? "Reset il " + resetFormatted + " · " + formatPercent(meta.pct) + "% " + t("cycleElapsed")
+    : "Resets " + resetFormatted + " · " + formatPercent(meta.pct) + "% " + t("cycleElapsed");
+
+  return (
+    '<div class="card">' +
+      cardLabel(t("billingCycle"), "billingCycle") +
+      '<div class="card-value">' + escapeHtml(formatBillingCycleValue(meta.daysLeft)) +
+        '<span class="card-value-sub muted"> ' + escapeHtml(t("billingCycleUntilReset")) + "</span></div>" +
+      '<div class="progress"><div style="width:' + Math.round(meta.pct) + '%"></div></div>' +
+      '<div class="card-footer">' + escapeHtml(footerText) + "</div>" +
+    "</div>"
+  );
+}
 
 function renderPlanBanner() {
   if (!ui.planBanner) return;
@@ -194,7 +251,7 @@ function renderPoolUsageCard(poolUsage, poolDepletion, resetAtIso, poolSeries, p
     : "";
 
   return (
-    '<div class="card">' +
+    '<div class="card card-pool">' +
       cardLabel(t("includedPool"), "includedPool") +
       '<div class="card-value">' + formatPercent(totalPct) + "% " + escapeHtml(t("totalUsed")) + "</div>" +
       '<div class="pool-rows">' +
@@ -224,6 +281,118 @@ function renderPoolUsageCard(poolUsage, poolDepletion, resetAtIso, poolSeries, p
   );
 }
 
+function formatOnDemandFooter(onDemand) {
+  if (onDemand.onDemandEnabled === false && !onDemand.breakdown) {
+    return "Left " + formatDollars(0) + " / " + formatDollars(0);
+  }
+  const breakdown = onDemand.breakdown;
+  if (!breakdown) {
+    return onDemand.state === "unlimited" ? t("unlimited") : t("onDemandFooter");
+  }
+  if (onDemand.onDemandEnabled === false) {
+    const leftTotal = "Left " + formatDollars(0) + " / " + formatDollars(0);
+    if (breakdown.isTeamPool) {
+      return "Team " + formatDollars(breakdown.othersSpendDollars) + " · " + leftTotal;
+    }
+    return leftTotal;
+  }
+  if (onDemand.state === "unlimited") {
+    if (breakdown.isTeamPool) {
+      return "Team " + formatDollars(breakdown.othersSpendDollars) + " · " + t("unlimited");
+    }
+    return t("unlimited");
+  }
+  if (onDemand.state !== "limited") return t("onDemandFooter");
+  const limit = onDemand.limitDollars || 0;
+  const leftTotal = "Left " + formatDollars(breakdown.remainingDollars) + " / " + formatDollars(limit);
+  if (breakdown.isTeamPool) {
+    return "Team " + formatDollars(breakdown.othersSpendDollars) + " · " + leftTotal;
+  }
+  return leftTotal;
+}
+
+function formatOnDemandValue(onDemand) {
+  const mySpend = breakdownMySpend(onDemand);
+  if (
+    onDemand.state === "unlimited" ||
+    onDemand.onDemandEnabled === false ||
+    (onDemand.breakdown && onDemand.breakdown.isTeamPool)
+  ) {
+    return formatDollars(mySpend);
+  }
+  return formatDollars(mySpend) + " / " + formatDollars(onDemand.limitDollars || 0);
+}
+
+function breakdownMySpend(onDemand) {
+  if (onDemand.breakdown && typeof onDemand.breakdown.mySpendDollars === "number") {
+    return onDemand.breakdown.mySpendDollars;
+  }
+  return onDemand.spendDollars || 0;
+}
+
+function renderOnDemandProgress(onDemand) {
+  const limit = onDemand.limitDollars || 0;
+  const breakdown = onDemand.breakdown;
+
+  if (onDemand.state === "unlimited" && breakdown) {
+    const totalSpend = breakdown.totalSpendDollars || 0;
+    if (totalSpend <= 0) {
+      return '<div class="progress"><div style="width:0%"></div></div>';
+    }
+    const youPct = Math.round((breakdown.mySpendDollars / totalSpend) * 100);
+    const othersPct = Math.max(0, 100 - youPct);
+    return (
+      '<div class="progress progress-segmented">' +
+        '<div class="progress-you" style="width:' + youPct + '%"></div>' +
+        '<div class="progress-others" style="width:' + othersPct + '%"></div>' +
+      "</div>"
+    );
+  }
+
+  if (onDemand.state === "limited") {
+    if (limit <= 0) {
+      const totalSpend = breakdown
+        ? breakdown.totalSpendDollars
+        : onDemand.spendDollars || 0;
+      if (totalSpend <= 0) {
+        return '<div class="progress"><div style="width:0%"></div></div>';
+      }
+      if (!breakdown) {
+        return '<div class="progress"><div style="width:100%"></div></div>';
+      }
+      const youPct = Math.round((breakdown.mySpendDollars / totalSpend) * 100);
+      const othersPct = Math.max(0, 100 - youPct);
+      return (
+        '<div class="progress progress-segmented">' +
+          '<div class="progress-you" style="width:' + youPct + '%"></div>' +
+          '<div class="progress-others" style="width:' + othersPct + '%"></div>' +
+        "</div>"
+      );
+    }
+
+    if (!breakdown) {
+      const ratio = Math.min(1, breakdownMySpend(onDemand) / limit);
+      return '<div class="progress"><div style="width:' + Math.round(ratio * 100) + '%"></div></div>';
+    }
+
+    const totalSpend = breakdown.totalSpendDollars || 0;
+    const scale = limit > 0 && totalSpend > limit ? totalSpend : limit > 0 ? limit : totalSpend;
+    if (scale <= 0) {
+      return '<div class="progress"><div style="width:0%"></div></div>';
+    }
+    const youPct = Math.round((breakdown.mySpendDollars / scale) * 100);
+    const othersPct = Math.round((breakdown.othersSpendDollars / scale) * 100);
+    return (
+      '<div class="progress progress-segmented">' +
+        '<div class="progress-you" style="width:' + youPct + '%"></div>' +
+        '<div class="progress-others" style="width:' + othersPct + '%"></div>' +
+      "</div>"
+    );
+  }
+
+  return '<div class="progress"><div style="width:0%"></div></div>';
+}
+
 export function renderSummaryCards() {
   renderPlanBanner();
   if (!refs.state || !refs.state.data) {
@@ -231,39 +400,49 @@ export function renderSummaryCards() {
     return;
   }
   const { includedRequests, onDemand } = refs.state.data;
-  const reqRatio = includedRequests.limit > 0 ? Math.min(1, includedRequests.used / includedRequests.limit) : 0;
-  const reqPct = Math.round(reqRatio * 100);
 
   const parts = [];
-  parts.push(
-    '<div class="card">' +
-      cardLabel(t("includedRequests"), "includedRequests") +
-      '<div class="card-value">' + includedRequests.used + " / " + includedRequests.limit + "</div>" +
-      '<div class="progress"><div style="width:' + (reqPct) + '%"></div></div>' +
-      '<div class="card-footer">' + formatResetCountdown(refs.state.resetsAt) + "</div>" +
-    "</div>"
-  );
+
+  if (refs.state.showPremiumRequests) {
+    const reqRatio = includedRequests.limit > 0 ? Math.min(1, includedRequests.used / includedRequests.limit) : 0;
+    const reqPct = Math.round(reqRatio * 100);
+    parts.push(
+      '<div class="card">' +
+        cardLabel(t("includedRequests"), "includedRequests") +
+        '<div class="card-value">' + includedRequests.used + " / " + includedRequests.limit + "</div>" +
+        '<div class="progress"><div style="width:' + (reqPct) + '%"></div></div>' +
+        '<div class="card-footer">' + formatResetCountdown(refs.state.resetsAt) + "</div>" +
+      "</div>"
+    );
+  }
 
   if (onDemand.state !== "disabled") {
-    let valText, footerText, ratio;
+    let valText, footerText, progressHtml;
     if (onDemand.state === "unlimited") {
-      valText = formatDollars(onDemand.spendDollars);
-      footerText = t("unlimited");
-      ratio = 0;
+      valText = formatOnDemandValue(onDemand);
+      progressHtml = onDemand.breakdown
+        ? renderOnDemandProgress(onDemand)
+        : '<div class="progress"><div style="width:0%"></div></div>';
+      footerText = formatOnDemandFooter(onDemand);
     } else {
-      valText = formatDollars(onDemand.spendDollars) + " / " + formatDollars(onDemand.limitDollars || 0);
-      ratio = onDemand.limitDollars > 0 ? Math.min(1, onDemand.spendDollars / onDemand.limitDollars) : 0;
-      footerText = t("onDemandFooter");
+      valText = formatOnDemandValue(onDemand);
+      progressHtml = renderOnDemandProgress(onDemand);
+      footerText = formatOnDemandFooter(onDemand);
     }
     parts.push(
       '<div class="card">' +
         cardLabel(t("onDemandUsage"), "onDemand") +
         '<div class="card-value">' + valText + "</div>" +
-        '<div class="progress"><div style="width:' + Math.round(ratio * 100) + '%"></div></div>' +
-        '<div class="card-footer">' + footerText + "</div>" +
+        progressHtml +
+        '<div class="card-footer">' + escapeHtml(footerText) + "</div>" +
       "</div>"
     );
   }
+
+  if (refs.state.data.poolUsage && !refs.state.showPremiumRequests) {
+    parts.push(renderBillingCycleCard(refs.state.resetsAt));
+  }
+
   if (refs.state.data.poolUsage) {
     parts.push(renderPoolUsageCard(
       refs.state.data.poolUsage,

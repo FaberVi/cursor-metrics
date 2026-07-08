@@ -9,6 +9,7 @@ import {
   type PoolRecommendedUsage,
   type PoolUsageSeries,
 } from "./pool-usage-series";
+import { shouldShowPremiumRequestsQuota } from "./usage-display";
 
 export type ChartMetric = "spend" | "tokens" | "requests";
 export type UsageFilter = "all" | "included" | "ondemand";
@@ -30,6 +31,7 @@ export type DashboardState = {
   dailySpend: DailySpendRow[];
   resetsAt: string | null;
   isTeamMember: boolean;
+  showPremiumRequests: boolean;
   quotaAwareEventDisplay: boolean;
   poolUsageSeries: PoolUsageSeries | null;
   poolDepletion: PoolDepletionEstimate | null;
@@ -78,6 +80,10 @@ export function buildDashboardState(
 ): DashboardState {
   const poolUsage = data?.poolUsage ?? null;
   const resetsAt = data?.resetsAt ?? null;
+  const showPremiumRequests = shouldShowPremiumRequestsQuota(
+    data?.planInfo ?? null,
+    poolUsage,
+  );
 
   return {
     generatedAt: now,
@@ -86,6 +92,7 @@ export function buildDashboardState(
     dailySpend,
     resetsAt,
     isTeamMember,
+    showPremiumRequests,
     quotaAwareEventDisplay,
     poolUsageSeries: poolUsage ? buildPoolUsageSeries(events, poolUsage, resetsAt, now) : null,
     poolDepletion: poolUsage ? projectPoolDepletion(poolUsage, resetsAt, now) : null,

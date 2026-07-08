@@ -259,7 +259,10 @@ label select { color: var(--input-fg); }
   display: block;
 }
 .summary-cards.has-pool-card {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.summary-cards.has-pool-card .card-pool {
+  grid-column: 1 / -1;
 }
 
 .pool-rows {
@@ -447,6 +450,11 @@ label select { color: var(--input-fg); }
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
+.card .card-value-sub {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+}
 .card .card-footer {
   font-size: 11px;
   color: var(--muted);
@@ -465,6 +473,17 @@ label select { color: var(--input-fg); }
   background: var(--fg);
   opacity: 0.85;
   transition: width 200ms ease;
+}
+.progress.progress-segmented {
+  display: flex;
+}
+.progress.progress-segmented > .progress-you {
+  background: var(--fg);
+  opacity: 0.9;
+}
+.progress.progress-segmented > .progress-others {
+  background: var(--fg);
+  opacity: 0.45;
 }
 
 .controls {

@@ -207,16 +207,6 @@ export function renderChart() {
   const isSpend = local.metric === "spend";
   const yLabel = isSpend ? t("metricSpend") : local.metric === "tokens" ? t("metricTokens") : t("metricRequests");
 
-  const numX = series.labels.length;
-  const topDatasetForX = new Array(numX).fill(-1);
-  for (let i = 0; i < series.datasets.length; i++) {
-    const data = series.datasets[i].data;
-    for (let x = 0; x < numX; x++) {
-      if ((data[x] || 0) > 0) topDatasetForX[x] = i;
-    }
-  }
-
-  const RADIUS = 4;
   const chartData = {
     labels: series.labels,
     datasets: series.datasets.map((d, i) => ({
@@ -226,14 +216,6 @@ export function renderChart() {
       backgroundColor: PALETTE[i % PALETTE.length],
       borderColor: PALETTE[i % PALETTE.length],
       borderWidth: 0,
-      borderSkipped: false,
-      borderRadius: (ctx) => {
-        const x = ctx.dataIndex;
-        const v = ctx.parsed && typeof ctx.parsed.y === "number" ? ctx.parsed.y : 0;
-        if (v <= 0) return 0;
-        if (topDatasetForX[x] !== i) return 0;
-        return { topLeft: RADIUS, topRight: RADIUS, bottomLeft: 0, bottomRight: 0 };
-      },
       categoryPercentage: 0.7,
       barPercentage: 0.85,
     })),

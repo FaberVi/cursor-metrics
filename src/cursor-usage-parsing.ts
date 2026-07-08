@@ -122,11 +122,11 @@ function pickNumber(record: Record<string, unknown>, fields: string[]): NumberWi
 function extractOnDemandFromSummaryBlock(
   block: Record<string, unknown> | null,
   stripeOnDemandEnabled: boolean,
-): UsagePayload["onDemand"] {
+): OnDemandUsage {
   if (!block || block.enabled !== true) {
     return stripeOnDemandEnabled
-      ? { state: "unlimited", spendDollars: 0, limitDollars: null }
-      : { state: "disabled", spendDollars: 0, limitDollars: null };
+      ? { state: "unlimited", onDemandEnabled: true, spendDollars: 0, limitDollars: null }
+      : { state: "disabled", onDemandEnabled: false, spendDollars: 0, limitDollars: null };
   }
 
   const usedCents = toNumber(block.used) ?? 0;
@@ -134,10 +134,15 @@ function extractOnDemandFromSummaryBlock(
   const limitCents = toNumber(block.limit);
 
   if (limitCents !== null && limitCents > 0) {
-    return { state: "limited", spendDollars, limitDollars: limitCents / 100 };
+    return {
+      state: "limited",
+      onDemandEnabled: stripeOnDemandEnabled,
+      spendDollars,
+      limitDollars: limitCents / 100,
+    };
   }
 
-  return { state: "unlimited", spendDollars, limitDollars: null };
+  return { state: "unlimited", onDemandEnabled: true, spendDollars, limitDollars: null };
 }
 
 function extractPoolUsageFromPlan(plan: Record<string, unknown>): UsagePayload["poolUsage"] {
@@ -317,7 +322,7 @@ export function enrichUsageFromEvents(
 
   const onDemand =
     data.onDemand.state === "disabled" && onDemandSpendCents > 0
-      ? { state: "unlimited" as const, spendDollars: onDemandSpendCents / 100, limitDollars: null }
+      ? { state: "unlimited" as const, onDemandEnabled: true, spendDollars: onDemandSpendCents / 100, limitDollars: null }
       : data.onDemand;
 
   return {

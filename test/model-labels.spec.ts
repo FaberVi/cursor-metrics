@@ -43,6 +43,12 @@ describe("formatStatusBarUsageText", () => {
     );
   });
 
+  it("omits legacy request counter when showPremiumRequests is false", () => {
+    expect(formatStatusBarUsageText(base, { onDemandVisible: true, showPremiumRequests: false })).toBe(
+      "33% Auto, 12% API, $0.00/$50.00",
+    );
+  });
+
   it("omits pool percentages when poolUsage is null", () => {
     expect(
       formatStatusBarUsageText({ ...base, poolUsage: null }, { onDemandVisible: true }),

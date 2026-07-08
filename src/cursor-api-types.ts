@@ -1,14 +1,12 @@
 import type { PlanInfo } from "./plan-labels";
+import type { OnDemandBreakdown, OnDemandUsage } from "./on-demand";
 
 export type { PlanInfo };
+export type { OnDemandBreakdown, OnDemandUsage };
 
 export type UsagePayload = {
   includedRequests: { used: number; limit: number };
-  onDemand: {
-    state: "disabled" | "limited" | "unlimited";
-    spendDollars: number;
-    limitDollars: number | null;
-  };
+  onDemand: OnDemandUsage;
   poolUsage: {
     autoPercentUsed: number;
     apiPercentUsed: number;
@@ -73,7 +71,7 @@ export type DailySpendRow = {
   totalTokens: number;
 };
 
-export type AuthInfo = { userId: string; sessionToken: string; email: string | null };
+export type AuthInfo = { userId: string; accessToken: string; sessionToken: string; email: string | null };
 
 export type RequestTotals = { used: number; limit: number; source: string };
 
@@ -84,6 +82,7 @@ export type SetupCache = {
   teamId?: number;
   maxRequestUsage: number;
   onDemandEnabled: boolean;
+  stripeRecord: Record<string, unknown> | null;
   planInfo: PlanInfo | null;
 };
 

@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.0] - 2026-07-08
+
+### Changed
+- Community fork rebranded as **Cursor Usage (Community)** for publication under publisher `fabervi`.
+- Status bar, tooltip, and dashboard no longer show the legacy `used/limit` request counter when Cursor exposes pool usage (First-party Auto + API pools), matching current Cursor billing for Team, Enterprise, and modern personal plans.
+- `minimalMode` now treats total pool exhaustion as the trigger on pool-based plans.
+- Help text updated to describe the two-pool billing model instead of deprecated premium-request quotas.
+- On-demand usage now uses `GetCurrentPeriodUsage` for accurate pooled/individual limits (integrated from cozminv fork).
+- Stacked chart bars no longer use rounded corners on intermediate segments.
+
+### Added
+- `shouldShowPremiumRequestsQuota()` and `isIncludedQuotaExhausted()` helpers in `src/usage-display.ts`.
+- Tests for pool-based vs legacy personal display rules.
+- On-demand module (`src/on-demand.ts`) with team pool breakdown, spend-limit API parsing, and segmented progress bars.
+- Dashboard UI preferences persistence (`range`, `usageFilter`, `metric`) across sessions.
+- Totals row in Usage by Model table (dashboard and tooltip).
+
+## [0.5.19] - 2026-07-08
+
+### Changed
+- Status bar, tooltip, and dashboard no longer show the legacy `used/limit` request counter when Cursor exposes pool usage (First-party Auto + API pools), matching current Cursor billing for Team, Enterprise, and modern personal plans.
+- `minimalMode` now treats total pool exhaustion as the trigger on pool-based plans.
+- Help text updated to describe the two-pool billing model instead of deprecated premium-request quotas.
+
+### Added
+- `shouldShowPremiumRequestsQuota()` and `isIncludedQuotaExhausted()` helpers in `src/usage-display.ts`.
+- Tests for pool-based vs legacy personal display rules.
+
 ## [0.5.18] - 2026-05-07
 
 ### Added
