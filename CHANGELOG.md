@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.7.0] - 2026-07-13
+
+### Added
+- Dashboard **Pricing** tab with official per-component model rates sourced from `model-pricing.json`, including First-party vs API pool badges and provider filters.
+- Model pricing catalog with variant modes (thinking, fast, max context), alias resolution, and per-model token cost calculator.
+- Actual vs theoretical spend comparison and delta per model for the active dashboard range.
+- Deep link from event detail and model breakdown into the matching pricing catalog row.
+- Sticky dashboard main tabs: **Usage**, **Pools**, **Pricing**, and **Activity** (events / conversations).
+- `src/model-pricing.ts` for catalog loading, variant-aware rate resolution, component cost estimation, and usage aggregation.
+- `src/dashboard/dashboard-html.ts` to generate dashboard markup from the extension host.
+- Cross-platform packaging and publish scripts (`scripts/package-extension.mjs`, `scripts/publish-extension.mjs`) using Bun instead of shell-only `vsce`/`ovsx` invocations.
+- Split dashboard i18n into `en.js` / `it.js` locale bundles plus `pricing-catalog-i18n.js` for Italian variant labels and notes.
+- Tests for model pricing catalog validation, alias/variant resolution, and theoretical cost estimation.
+
+### Changed
+- Decomposed monolithic `extension.ts`, `on-demand.ts`, `cursor-usage-fetch.ts`, and dashboard modules into smaller host and webview files for maintainability.
+- Split dashboard CSS into layout, summary, events, and pricing stylesheets; refactored summary and tables into focused JS modules.
+- Expanded README with Bun prerequisites, local VSIX build steps, and Open VSX / Visual Studio Marketplace publish workflow (including Windows PowerShell examples).
+- Simplified `package.json` release scripts to delegate build, package, and publish to the new Bun scripts.
+
+### Fixed
+- Complete Italian localization for the pricing section UI, variant descriptions, and token component labels.
+- Vertical spacing of the expanded “Modes & pricing impact” panel under each model row.
+
 ## [0.6.0] - 2026-07-08
 
 ### Changed

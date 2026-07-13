@@ -1,6 +1,6 @@
 {
   "name": "cursor-usage",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/FaberVi/cursor-metrics"
@@ -137,10 +137,10 @@
   "scripts": {
     "build": "bun scripts/download-chart.mjs && bun esbuild.config.mjs --production",
     "watch": "bun esbuild.config.mjs --watch",
-    "package": "bun run build && mkdir -p build && VERSION=$(node -p \"require('./package.json').version\") && bunx @vscode/vsce package --out \"build/cursor-metrics-community-${VERSION}.vsix\"",
-    "package:vsm": "bun run build && node scripts/prepare-vsm-package.mjs && VERSION=$(node -p \"require('./package.json').version\") && cd \"build/vsm-package\" && bunx @vscode/vsce package --out \"../cursor-usage-auto-${VERSION}.vsix\"",
-    "publish:ovsx": "VERSION=$(node -p \"require('./package.json').version\") && bunx ovsx publish \"build/cursor-usage-${VERSION}.vsix\" -p \"$OPEN_VSX_TOKEN\"",
-    "publish:vsm": "bun run package:vsm && VERSION=$(node -p \"require('./package.json').version\") && bunx @vscode/vsce publish --packagePath \"build/cursor-usage-auto-${VERSION}.vsix\" -p \"$VSCE_PAT\"",
+    "package": "bun scripts/package-extension.mjs",
+    "package:vsm": "bun scripts/package-extension.mjs vsm",
+    "publish:ovsx": "bun scripts/publish-extension.mjs ovsx",
+    "publish:vsm": "bun run package:vsm && bun scripts/publish-extension.mjs vsm",
     "publish:all": "bun run package && bun run publish:ovsx && bun run publish:vsm",
     "release": "bun run publish:all"
   },

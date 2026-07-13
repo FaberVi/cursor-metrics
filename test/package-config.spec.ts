@@ -16,10 +16,14 @@ describe("package configuration", () => {
   });
 
   it("keeps the display name while using a unique VS Marketplace package id", () => {
+    const packageScript = readFileSync("scripts/package-extension.mjs", "utf-8");
+    const prepareVsmScript = readFileSync("scripts/prepare-vsm-package.mjs", "utf-8");
+
     expect(packageJson.displayName).toBe("Cursor Usage (Community)");
     expect(packageJson.publisher).toBe("fabervi");
-    expect(packageJson.scripts["package:vsm"]).toContain("cursor-usage-auto");
-    expect(packageJson.scripts["publish:vsm"]).toContain("cursor-usage-auto");
+    expect(packageScript).toContain("cursor-usage-auto");
+    expect(prepareVsmScript).toContain("cursor-usage-auto");
+    expect(packageJson.scripts["publish:vsm"]).toContain("publish-extension.mjs vsm");
   });
 
   it("exposes model table sorting settings with token-desc defaults", () => {

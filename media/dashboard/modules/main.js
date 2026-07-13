@@ -1,4 +1,5 @@
 ﻿import {
+  applyMainTab,
   applySectionState,
   EVENTS_PAGE_SIZES,
   local,
@@ -8,6 +9,7 @@
   refs,
   resetEventsPage,
   setState,
+  switchMainTab,
   ui,
   vscode,
 } from "./core.js";
@@ -37,6 +39,7 @@ import {
   showEventDetail,
 } from "./tables.js";
 import { applyStaticTranslations, t } from "./i18n.js";
+import { bindPricingHandlers, navigateToModelPricing, renderPricing } from "./pricing.js";
 
 function closeActivityDetail() {
   closeEventDetail();
@@ -52,6 +55,15 @@ function applyUiPreferences(prefs) {
   if (refs.state) renderAll();
 }
 
+function rerenderActiveMainTab() {
+  const tab = local.mainTab;
+  if (tab === "usage") {
+    renderChart();
+  } else if (tab === "pools") {
+    renderPoolChart();
+  }
+}
+
 function renderAll() {
   if (!refs.state) return;
   if (ui.currencySelect) {
@@ -61,20 +73,21 @@ function renderAll() {
   applyStaticTranslations();
   closeActivityDetail();
   applySectionState();
+  applyMainTab();
   setActiveRangeButton();
   ui.usageFilter.value = local.usageFilter;
   ui.metricFilter.value = local.metric;
   applyTeamMemberConstraints();
   renderSummaryCards();
-  renderChart();
-  renderPoolChart();
   renderBreakdown();
+  renderPricing();
   renderTable();
   renderConversationsTable();
   updateArchiveNote();
   applyActivityTab();
   showError(refs.state.error);
   ui.lastUpdated.textContent = formatUpdatedAt(refs.state.generatedAt);
+  rerenderActiveMainTab();
 }
 
 ui.rangeSelector.addEventListener("click", (e) => {
@@ -96,6 +109,7 @@ ui.usageFilter.addEventListener("change", () => {
   syncDashboardPrefs();
   renderChart();
   renderBreakdown();
+  renderPricing();
   renderTable();
 });
 
@@ -144,6 +158,15 @@ if (ui.breakdownHead) {
     }
     persistLocal();
     renderBreakdown();
+  });
+}
+
+if (ui.breakdownBody) {
+  ui.breakdownBody.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-pricing-model]");
+    if (!btn) return;
+    e.preventDefault();
+    navigateToModelPricing(btn.dataset.pricingModel);
   });
 }
 
@@ -201,19 +224,12 @@ ui.pagination.addEventListener("change", (e) => {
   renderTable();
 });
 
-document.querySelectorAll(".section-title-row[data-toggle-section]").forEach((row) => {
-  row.addEventListener("click", () => {
-    const section = row.dataset.toggleSection;
-    if (!section || !Object.prototype.hasOwnProperty.call(local.sectionOpen, section)) return;
-    local.sectionOpen[section] = !local.sectionOpen[section];
-    persistLocal();
-    applySectionState();
-    if (section === "usage" && local.sectionOpen.usage && refs.state) {
-      renderChart();
-    }
-    if (section === "pool" && local.sectionOpen.pool && refs.state) {
-      renderPoolChart();
-    }
+document.querySelectorAll(".dashboard-tab[data-main-tab]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const tab = btn.dataset.mainTab;
+    if (!tab || tab === local.mainTab) return;
+    switchMainTab(tab);
+    rerenderActiveMainTab();
   });
 });
 
@@ -278,6 +294,8 @@ window.addEventListener("message", (event) => {
 
 applyStaticTranslations();
 applySectionState();
+applyMainTab();
+bindPricingHandlers();
 applyActivityTab();
 bindConversationHandlers(vscode);
 vscode.postMessage({ type: "ready" });

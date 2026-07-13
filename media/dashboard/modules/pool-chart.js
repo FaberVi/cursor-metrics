@@ -201,18 +201,14 @@ function renderPoolPaceChart(series, muted, grid) {
 }
 
 export function renderPoolChart() {
-  const section = document.querySelector('.collapsible-section[data-section="pool"]');
   const series = refs.state?.poolUsageSeries;
-  if (!section || !ui.poolCanvas) return;
+  if (!ui.poolCanvas) return;
 
   if (!series || !refs.state?.data?.poolUsage) {
-    section.classList.add("hidden");
     setPoolChart(null);
     setPoolPaceChart(null);
     return;
   }
-
-  section.classList.remove("hidden");
 
   const styles = getComputedStyle(document.body);
   const muted = styles.getPropertyValue("--muted").trim() || "rgba(255,255,255,0.55)";

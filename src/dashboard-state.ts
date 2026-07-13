@@ -2,6 +2,12 @@ import type { DailySpendRow, UsageEvent, UsagePayload } from "./cursor-api";
 import { CARD_HELP } from "./card-help";
 import { getDurationCutoff, type UsageDuration } from "./model-breakdown";
 import {
+  aggregateTheoreticalByModel,
+  getModelPricingCatalog,
+  type ModelPricingCatalog,
+  type TheoreticalModelCost,
+} from "./model-pricing";
+import {
   buildPoolUsageSeries,
   computeRecommendedPoolUsage,
   projectPoolDepletion,
@@ -24,6 +30,12 @@ export type ChartSeries = {
   datasets: ChartDataset[];
 };
 
+export type ModelPricingState = {
+  catalog: ModelPricingCatalog;
+  usedModelIds: string[];
+  theoreticalByModel: Record<string, TheoreticalModelCost>;
+};
+
 export type DashboardState = {
   generatedAt: number;
   data: UsagePayload | null;
@@ -36,6 +48,7 @@ export type DashboardState = {
   poolUsageSeries: PoolUsageSeries | null;
   poolDepletion: PoolDepletionEstimate | null;
   poolRecommended: PoolRecommendedUsage | null;
+  modelPricing: ModelPricingState;
   error: string | null;
   cardHelp: typeof CARD_HELP;
   conversationTitles: Record<string, string>;
@@ -84,6 +97,21 @@ export function buildDashboardState(
     data?.planInfo ?? null,
     poolUsage,
   );
+  const catalog = getModelPricingCatalog();
+  const isTeamPlan =
+    data?.planInfo?.tier === "Teams" ||
+    data?.planInfo?.tier === "Enterprise" ||
+    data?.planInfo?.tier.startsWith("Teams ·") === true;
+  const pricingAggregate = aggregateTheoreticalByModel(
+    events,
+    "billingCycle",
+    resetsAt,
+    now,
+    {
+      applyCursorTokenRate: isTeamPlan,
+      cursorTokenRatePerMillion: catalog.cursorTokenRatePerMillion,
+    },
+  );
 
   return {
     generatedAt: now,
@@ -97,6 +125,11 @@ export function buildDashboardState(
     poolUsageSeries: poolUsage ? buildPoolUsageSeries(events, poolUsage, resetsAt, now) : null,
     poolDepletion: poolUsage ? projectPoolDepletion(poolUsage, resetsAt, now) : null,
     poolRecommended: poolUsage ? computeRecommendedPoolUsage(resetsAt, now) : null,
+    modelPricing: {
+      catalog,
+      usedModelIds: pricingAggregate.usedModelIds,
+      theoreticalByModel: pricingAggregate.theoreticalByModel,
+    },
     error,
     cardHelp: CARD_HELP,
     conversationTitles,

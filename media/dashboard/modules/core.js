@@ -3,6 +3,8 @@ export const DAY_MS = 86_400_000;
 export const EVENTS_PAGE_SIZES = [25, 50, 100, 200];
 export const DEFAULT_EVENTS_PAGE_SIZE = 50;
 
+export const MAIN_TABS = ["usage", "pools", "pricing", "activity"];
+
 export const ui = {
   summaryCards: document.getElementById("summary-cards"),
   rangeSelector: document.getElementById("range-selector"),
@@ -19,6 +21,15 @@ export const ui = {
   breakdownFoot: document.querySelector("#breakdown-table tfoot"),
   breakdownHead: document.querySelector("#breakdown-table thead"),
   breakdownRangeLabel: document.getElementById("breakdown-range-label"),
+  pricingBody: document.querySelector("#pricing-table tbody"),
+  pricingHead: document.querySelector("#pricing-table thead"),
+  pricingRangeLabel: document.getElementById("pricing-range-label"),
+  pricingUpdated: document.getElementById("pricing-updated"),
+  pricingSource: document.getElementById("pricing-source"),
+  pricingSearch: document.getElementById("pricing-search"),
+  pricingProviderFilter: document.getElementById("pricing-provider-filter"),
+  pricingPoolFilter: document.getElementById("pricing-pool-filter"),
+  pricingUsedOnly: document.getElementById("pricing-used-only"),
   pagination: document.getElementById("pagination"),
   conversationsBody: document.querySelector("#conversations-table tbody"),
   conversationsHead: document.querySelector("#conversations-table thead"),
@@ -43,6 +54,9 @@ export const ui = {
   eventDetailSubtitle: document.getElementById("event-detail-subtitle"),
   eventDetailBody: document.getElementById("event-detail-body"),
   eventDetailClose: document.getElementById("event-detail-close"),
+  mainTabs: document.querySelectorAll(".dashboard-tab[data-main-tab]"),
+  mainTabPanels: document.querySelectorAll(".dashboard-tab-panel"),
+  mainTabPools: document.getElementById("main-tab-pools"),
 };
 
 const persisted = vscode.getState() || {};
@@ -57,10 +71,12 @@ export const local = {
   sortOrder: persisted.sortOrder || "desc",
   breakdownSortKey: persisted.breakdownSortKey || "totalTokens",
   breakdownSortOrder: persisted.breakdownSortOrder || "desc",
+  mainTab: MAIN_TABS.includes(persisted.mainTab) ? persisted.mainTab : "usage",
   sectionOpen: {
     usage: persisted.sectionOpen?.usage !== false,
     pool: persisted.sectionOpen?.pool !== false,
     breakdown: persisted.sectionOpen?.breakdown !== false,
+    pricing: persisted.sectionOpen?.pricing !== false,
     events: persisted.sectionOpen?.events !== false,
   },
   eventsPage: Math.max(1, persisted.eventsPage || 1),
@@ -75,6 +91,14 @@ export const local = {
     : DEFAULT_EVENTS_PAGE_SIZE,
   conversationSortKey: persisted.conversationSortKey || "lastTimestamp",
   conversationSortOrder: persisted.conversationSortOrder || "desc",
+  pricingSortKey: persisted.pricingSortKey || "displayName",
+  pricingSortOrder: persisted.pricingSortOrder || "asc",
+  pricingSearch: persisted.pricingSearch || "",
+  pricingProvider: persisted.pricingProvider || "all",
+  pricingPool: persisted.pricingPool || "all",
+  pricingUsedOnly: persisted.pricingUsedOnly === true,
+  pricingExpandedId: persisted.pricingExpandedId || null,
+  highlightModelId: null,
 };
 
 export const refs = {
@@ -148,6 +172,7 @@ export function persistLocal() {
     sortOrder: local.sortOrder,
     breakdownSortKey: local.breakdownSortKey,
     breakdownSortOrder: local.breakdownSortOrder,
+    mainTab: local.mainTab,
     sectionOpen: local.sectionOpen,
     eventsPage: local.eventsPage,
     eventsPageSize: local.eventsPageSize,
@@ -156,6 +181,13 @@ export function persistLocal() {
     conversationsPageSize: local.conversationsPageSize,
     conversationSortKey: local.conversationSortKey,
     conversationSortOrder: local.conversationSortOrder,
+    pricingSortKey: local.pricingSortKey,
+    pricingSortOrder: local.pricingSortOrder,
+    pricingSearch: local.pricingSearch,
+    pricingProvider: local.pricingProvider,
+    pricingPool: local.pricingPool,
+    pricingUsedOnly: local.pricingUsedOnly,
+    pricingExpandedId: local.pricingExpandedId,
   });
 }
 
@@ -183,18 +215,55 @@ export function paginateList(items, page, pageSize) {
 }
 
 function setSectionCollapsed(section, isOpen) {
-  const sectionEl = document.querySelector('.collapsible-section[data-section="' + section + '"]');
   const bodyEl = document.getElementById("section-body-" + section);
-  const toggleEl = document.querySelector('.section-toggle[data-toggle-section="' + section + '"]');
-  if (!sectionEl || !bodyEl || !toggleEl) return;
-  sectionEl.classList.toggle("collapsed", !isOpen);
+  if (!bodyEl) return;
   bodyEl.classList.toggle("hidden", !isOpen);
-  toggleEl.setAttribute("aria-expanded", isOpen ? "true" : "false");
 }
 
 export function applySectionState() {
-  setSectionCollapsed("usage", local.sectionOpen.usage);
-  setSectionCollapsed("pool", local.sectionOpen.pool);
-  setSectionCollapsed("breakdown", local.sectionOpen.breakdown);
-  setSectionCollapsed("events", local.sectionOpen.events);
+  setSectionCollapsed("usage", true);
+  setSectionCollapsed("pool", true);
+  setSectionCollapsed("breakdown", true);
+  setSectionCollapsed("pricing", true);
+  setSectionCollapsed("events", true);
+}
+
+export function poolsTabAvailable() {
+  return !!(refs.state?.poolUsageSeries && refs.state?.data?.poolUsage);
+}
+
+export function applyMainTab() {
+  let tab = local.mainTab;
+  if (!MAIN_TABS.includes(tab)) tab = "usage";
+
+  const poolsAvailable = poolsTabAvailable();
+  if (ui.mainTabPools) {
+    ui.mainTabPools.classList.toggle("hidden", !poolsAvailable);
+  }
+  if (tab === "pools" && !poolsAvailable) {
+    tab = "usage";
+    local.mainTab = tab;
+    persistLocal();
+  }
+
+  ui.mainTabs.forEach((btn) => {
+    const isActive = btn.dataset.mainTab === tab;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+
+  ui.mainTabPanels.forEach((panel) => {
+    const isActive = panel.dataset.mainTabPanel === tab;
+    panel.classList.toggle("hidden", !isActive);
+  });
+
+  return tab;
+}
+
+export function switchMainTab(tab) {
+  if (!MAIN_TABS.includes(tab)) return local.mainTab;
+  if (tab === "pools" && !poolsTabAvailable()) return local.mainTab;
+  local.mainTab = tab;
+  persistLocal();
+  return applyMainTab();
 }

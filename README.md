@@ -75,14 +75,145 @@ Daily pool percentages are derived from included usage events (`default` model �
 
 ## Development
 
+### Prerequisites
+
+- [Bun](https://bun.sh/) 1.x
+- [Cursor](https://cursor.com/) or [VS Code](https://code.visualstudio.com/) 1.85+
+- For packaging and publishing: network access (Chart.js download, `@vscode/vsce`, `ovsx` via `bunx`)
+
+### Clone and install
+
 ```bash
+git clone https://github.com/FaberVi/cursor-metrics.git
+cd cursor-metrics
 bun install
-bun run build      # production build
-bun run watch      # extension + dashboard watch mode
+```
+
+### Local development
+
+```bash
+bun run watch      # rebuild extension + dashboard on file changes
+bun run build      # one-off production build
 bun test           # run tests
 ```
 
 Press **F5** in VS Code/Cursor with the **Run Cursor Usage Extension** launch config to debug in an Extension Development Host.
+
+The production build:
+
+1. Downloads Chart.js into `media/dashboard/chart.umd.js`
+2. Bundles `src/extension.ts` → `dist/extension.js`
+3. Bundles the dashboard entry → `media/dashboard/dashboard.js`
+
+### Build a VSIX locally
+
+The extension is published under two package IDs on different marketplaces:
+
+| Marketplace | Package ID | VSIX filename | Script |
+|-------------|------------|---------------|--------|
+| [Open VSX](https://open-vsx.org/) | `cursor-usage` | `build/cursor-usage-<version>.vsix` | `bun run package` |
+| [Visual Studio Marketplace](https://marketplace.visualstudio.com/) | `cursor-usage-auto` | `build/cursor-usage-auto-<version>.vsix` | `bun run package:vsm` |
+
+The VS Marketplace build stages a copy of the extension with `name: cursor-usage-auto` (see `scripts/prepare-vsm-package.mjs`) so it can coexist with the original upstream listing.
+
+Create the Open VSX artifact:
+
+```bash
+bun run package
+```
+
+Create the Visual Studio Marketplace artifact:
+
+```bash
+bun run package:vsm
+```
+
+Install a VSIX locally for smoke testing:
+
+```bash
+# Cursor
+cursor --install-extension build/cursor-usage-0.7.0.vsix
+
+# VS Code
+code --install-extension build/cursor-usage-0.7.0.vsix
+```
+
+Replace `0.7.0` with the version from `package.json`.
+
+### Publish to marketplaces
+
+Publisher: **[fabervi](https://marketplace.visualstudio.com/publishers/fabervi)**
+
+#### Before each release
+
+1. Bump `version` in `package.json`
+2. Add a dated entry to `CHANGELOG.md`
+3. Run `bun test`
+4. Build both VSIX files and smoke-test at least one of them locally
+5. Set the publish tokens (see below)
+
+#### Open VSX
+
+1. Create an account on [open-vsx.org](https://open-vsx.org/)
+2. Generate a personal access token
+3. Set `OPEN_VSX_TOKEN` in your environment
+
+**PowerShell (Windows):**
+
+```powershell
+$env:OPEN_VSX_TOKEN = "your-open-vsx-token"
+bun run package
+bun run publish:ovsx
+```
+
+**bash (macOS / Linux / Git Bash):**
+
+```bash
+export OPEN_VSX_TOKEN="your-open-vsx-token"
+bun run package
+bun run publish:ovsx
+```
+
+#### Visual Studio Marketplace
+
+1. Create or use the [fabervi](https://marketplace.visualstudio.com/publishers/fabervi) publisher on the Visual Studio Marketplace
+2. Create an Azure DevOps [Personal Access Token](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate) with **Marketplace > Manage** scope
+3. Set `VSCE_PAT` in your environment
+
+**PowerShell (Windows):**
+
+```powershell
+$env:VSCE_PAT = "your-vsce-pat"
+bun run publish:vsm
+```
+
+**bash:**
+
+```bash
+export VSCE_PAT="your-vsce-pat"
+bun run publish:vsm
+```
+
+`publish:vsm` runs `package:vsm` first, then uploads `build/cursor-usage-auto-<version>.vsix`.
+
+#### Full release (both stores)
+
+With both tokens set:
+
+```bash
+bun run release
+```
+
+This runs, in order: `package` → `publish:ovsx` → `publish:vsm` (package + publish for VS Marketplace).
+
+#### Manual publish (alternative)
+
+If you prefer not to use the npm scripts:
+
+```bash
+bunx @vscode/vsce publish --packagePath build/cursor-usage-auto-<version>.vsix -p "$VSCE_PAT"
+bunx ovsx publish build/cursor-usage-<version>.vsix -p "$OPEN_VSX_TOKEN"
+```
 
 ## Authors & maintainers
 
