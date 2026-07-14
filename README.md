@@ -4,7 +4,13 @@ Community-maintained fork of [cursor-metrics](https://github.com/wrick17/cursor-
 
 ![Cursor Usage extension tooltip](media/extensions-tooltip.png)
 
-![Cursor Usage dashboard](media/extensions-dashboard.png)
+![Cursor Usage dashboard — Utilizzo](media/extensions-dashboard-usage.png)
+
+![Cursor Usage dashboard — Pool](media/extensions-dashboard-pools.png)
+
+![Cursor Usage dashboard — Prezzi](media/extensions-dashboard-pricing.png)
+
+![Cursor Usage dashboard — Attività](media/extensions-dashboard-activity.png)
 
 ## What you get
 
@@ -34,7 +40,12 @@ Community-maintained fork of [cursor-metrics](https://github.com/wrick17/cursor-
 - **Usage by Model** — sortable breakdown table with chart-matched colors.
 - **Events** — paginated, sortable event log with token breakdown modal and CSV export.
 - **Language selector** (`EN` / `IT`) in the header next to Refresh; choice is persisted.
+- **Sticky main tabs:** **Usage**, **Pools**, **Pricing**, and **Activity** (events / conversations).
+- **Pricing tab** with official per-component model rates, variant modes, token cost calculator, actual vs theoretical spend comparison, and pin/reorder for favorite models.
+- **Daily budget reset countdown** on the pool card (renews at midnight UTC).
 - Collapsible sections with persisted open/closed state.
+
+Screenshots above use Italian (IT) and EUR; regenerate with `bun run screenshots` after `bun install`.
 
 ## Commands
 
@@ -132,13 +143,13 @@ Install a VSIX locally for smoke testing:
 
 ```bash
 # Cursor
-cursor --install-extension build/cursor-usage-0.7.0.vsix
+cursor --install-extension build/cursor-usage-0.7.1.vsix
 
 # VS Code
-code --install-extension build/cursor-usage-0.7.0.vsix
+code --install-extension build/cursor-usage-0.7.1.vsix
 ```
 
-Replace `0.7.0` with the version from `package.json`.
+Replace `0.7.1` with the version from `package.json`.
 
 ### Publish to marketplaces
 

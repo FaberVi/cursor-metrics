@@ -8,7 +8,7 @@ export const CARD_HELP = {
   poolDepletion:
     "Estimated date each pool reaches 100% based on average daily consumption since the billing cycle started. If usage stays at the same rate, this is when the pool would run out before reset.",
   poolPace:
-    "Indicative daily budget to spread pool usage evenly until billing reset. Residual shows how much you could still use today; a negative value means you exceeded today's budget.",
+    "Indicative daily budget to spread pool usage evenly until billing reset. Residual shows how much you could still use today; a negative value means you exceeded today's budget. The daily budget renews at midnight UTC; the countdown shows hours and minutes until then.",
   billingCycle:
     "Days remaining in your current billing cycle and how much of the cycle has elapsed. Pool quotas and on-demand limits reset on the date shown.",
 } as const;

@@ -6,7 +6,7 @@ import {
 } from "../../../src/model-pricing.ts";
 import { updateCalculator } from "./pricing-calculator.js";
 import { renderPricing } from "./pricing-render.js";
-import { getEstimateOpts } from "./pricing-shared.js";
+import { getEstimateOpts, togglePricingModelPin, reorderPricingModelPin, persistPricingPins } from "./pricing-shared.js";
 
 export function navigateToModelPricing(modelId) {
   const entry = resolveModelPricing(modelId);
@@ -81,6 +81,15 @@ export function bindPricingHandlers() {
   }
   if (ui.pricingBody) {
     ui.pricingBody.addEventListener("click", (e) => {
+      const pinBtn = e.target.closest("[data-pin-model]");
+      if (pinBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePricingModelPin(pinBtn.dataset.pinModel);
+        persistPricingPins();
+        renderPricing();
+        return;
+      }
       const btn = e.target.closest("[data-expand-model]");
       if (!btn) return;
       const modelId = btn.dataset.expandModel;
@@ -110,6 +119,57 @@ export function bindPricingHandlers() {
       if (!input) return;
       const detailRow = input.closest(".pricing-detail-row");
       if (detailRow) updateCalculator(detailRow);
+    });
+
+    let draggedPinModelId = null;
+
+    ui.pricingBody.addEventListener("dragstart", (e) => {
+      const handle = e.target.closest("[data-drag-model]");
+      if (!handle) return;
+      draggedPinModelId = handle.dataset.dragModel;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", draggedPinModelId);
+      const row = handle.closest(".pricing-row-pinned");
+      if (row) row.classList.add("pricing-row-dragging");
+    });
+
+    ui.pricingBody.addEventListener("dragend", () => {
+      draggedPinModelId = null;
+      ui.pricingBody.querySelectorAll(".pricing-row-dragging, .pricing-row-drag-over").forEach((el) => {
+        el.classList.remove("pricing-row-dragging", "pricing-row-drag-over");
+      });
+    });
+
+    ui.pricingBody.addEventListener("dragover", (e) => {
+      const row = e.target.closest(".pricing-row-pinned");
+      if (!row || !draggedPinModelId) return;
+      if (row.dataset.modelId === draggedPinModelId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      ui.pricingBody.querySelectorAll(".pricing-row-drag-over").forEach((el) => {
+        el.classList.remove("pricing-row-drag-over");
+      });
+      row.classList.add("pricing-row-drag-over");
+    });
+
+    ui.pricingBody.addEventListener("dragleave", (e) => {
+      const row = e.target.closest(".pricing-row-pinned");
+      if (row && !row.contains(e.relatedTarget)) {
+        row.classList.remove("pricing-row-drag-over");
+      }
+    });
+
+    ui.pricingBody.addEventListener("drop", (e) => {
+      const row = e.target.closest(".pricing-row-pinned");
+      if (!row) return;
+      e.preventDefault();
+      const targetId = row.dataset.modelId;
+      const draggedId = draggedPinModelId || e.dataTransfer.getData("text/plain");
+      row.classList.remove("pricing-row-drag-over");
+      if (!draggedId || draggedId === targetId) return;
+      reorderPricingModelPin(draggedId, targetId);
+      persistPricingPins();
+      renderPricing();
     });
   }
 }

@@ -98,6 +98,9 @@ export const local = {
   pricingPool: persisted.pricingPool || "all",
   pricingUsedOnly: persisted.pricingUsedOnly === true,
   pricingExpandedId: persisted.pricingExpandedId || null,
+  pricingPinnedIds: Array.isArray(persisted.pricingPinnedIds)
+    ? persisted.pricingPinnedIds.filter((id) => typeof id === "string")
+    : [],
   highlightModelId: null,
 };
 
@@ -188,6 +191,7 @@ export function persistLocal() {
     pricingPool: local.pricingPool,
     pricingUsedOnly: local.pricingUsedOnly,
     pricingExpandedId: local.pricingExpandedId,
+    pricingPinnedIds: local.pricingPinnedIds,
   });
 }
 

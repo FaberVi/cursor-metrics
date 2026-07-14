@@ -9,6 +9,7 @@ export type DashboardUiPreferences = {
   range?: UsageDuration;
   usageFilter?: UsageFilter;
   metric?: ChartMetric;
+  pricingPinnedIds?: string[];
 };
 
 function isUsageFilter(value: unknown): value is UsageFilter {
@@ -19,6 +20,17 @@ function isChartMetric(value: unknown): value is ChartMetric {
   return value === "spend" || value === "tokens" || value === "requests";
 }
 
+function sanitizePinnedIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const ids: string[] = [];
+  for (const item of value) {
+    if (typeof item === "string" && item.length > 0 && !ids.includes(item)) {
+      ids.push(item);
+    }
+  }
+  return ids;
+}
+
 function sanitize(raw: unknown): DashboardUiPreferences {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
@@ -26,6 +38,8 @@ function sanitize(raw: unknown): DashboardUiPreferences {
   if (isUsageDuration(o.range)) prefs.range = o.range;
   if (isUsageFilter(o.usageFilter)) prefs.usageFilter = o.usageFilter;
   if (isChartMetric(o.metric)) prefs.metric = o.metric;
+  const pinned = sanitizePinnedIds(o.pricingPinnedIds);
+  if (pinned !== undefined) prefs.pricingPinnedIds = pinned;
   return prefs;
 }
 

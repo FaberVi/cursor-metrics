@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.7.1] - 2026-07-14
+
+### Added
+- **Daily budget reset countdown** in the dashboard pool card and status-bar tooltip — shows time until the daily allowance renews at midnight UTC (with local reset time).
+- **Pin models** in the Pricing tab: star/unstar models to keep them at the top of the catalog; pin order and selection persist across dashboard sessions via extension global state.
+- **Drag-and-drop reorder** for pinned pricing models (⋮⋮ handle on pinned rows).
+- Screenshot generation scripts (`scripts/build-screenshot-previews.mjs`, `scripts/capture-screenshots.mjs`) and `bun run screenshots` for README/marketplace assets.
+
+### Changed
+- README screenshots updated to reflect the current dashboard (Usage, Pools, Pricing, Activity tabs) and status-bar tooltip.
+- Italian pricing catalog labels and variant notes via `pricing-catalog-i18n.js`.
+
+### Fixed
+- Spacing above the expanded “Modes & pricing impact” panel in the Pricing tab.
+
 ## [0.7.0] - 2026-07-13
 
 ### Added

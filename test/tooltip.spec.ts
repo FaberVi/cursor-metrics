@@ -200,6 +200,7 @@ describe("buildUsageOverviewMarkdown", () => {
 
     expect(markdown).toContain("Daily budget");
     expect(markdown).toContain("budget");
+    expect(markdown).toMatch(/Resets in (\d+h \d+m|\d+m)/);
     expect(markdown).not.toContain("Recommended pace");
     expect(markdown).not.toContain("Today's suggested pace");
   });

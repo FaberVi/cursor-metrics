@@ -123,7 +123,7 @@
   helpPoolDepletion:
     "Data stimata in cui ogni pool raggiunge il 100% in base al consumo medio giornaliero dall'inizio del ciclo. Se il consumo resta uguale, \u00e8 quando il pool si esaurirebbe prima del reset.",
   helpPoolPace:
-    "Budget giornaliero indicativo per distribuire il pool fino al reset. Bianco = usato oggi; zona chiara = budget ancora disponibile; segno = budget del giorno. Il testo indica quanto puoi ancora usare.",
+    "Budget giornaliero indicativo per distribuire il pool fino al reset. Bianco = usato oggi; zona chiara = budget ancora disponibile; segno = budget del giorno. Il testo indica quanto puoi ancora usare. Il budget giornaliero si rinnova a mezzanotte UTC; il countdown indica ore e minuti rimanenti.",
   helpBillingCycle:
     "Giorni rimanenti nel ciclo di fatturazione corrente e quota del ciclo gi\u00e0 trascorsa. I pool inclusi e i limiti on-demand si azzerano alla data indicata.",
   recommendedPace: "Obiettivo cumulativo",
@@ -188,4 +188,7 @@
   pricingImpactCustomRates: "Tariffe personalizzate",
   pricingImpactSeparateModel: "Modello separato: {model}",
   pricingDetectedMode: "Modalit\u00e0 rilevata",
+  pricingPin: "Fissa in alto",
+  pricingUnpin: "Rimuovi fissaggio",
+  pricingDragReorder: "Trascina per riordinare",
 };

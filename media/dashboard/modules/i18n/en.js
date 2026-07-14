@@ -122,7 +122,7 @@
     helpPoolDepletion:
       "Estimated date each pool reaches 100% based on average daily consumption since the billing cycle started. If usage stays at the same rate, this is when the pool would run out before reset.",
     helpPoolPace:
-      "Indicative daily budget to spread pool usage evenly until billing reset. White = used today; shaded zone = budget still available; tick = today's allowance. Residual text shows how much you can still use.",
+      "Indicative daily budget to spread pool usage evenly until billing reset. White = used today; shaded zone = budget still available; tick = today's allowance. Residual text shows how much you can still use. The daily budget renews at midnight UTC; the countdown shows hours and minutes until then.",
     helpBillingCycle:
       "Days remaining in your current billing cycle and how much of the cycle has elapsed. Pool quotas and on-demand limits reset on the date shown.",
     recommendedPace: "Target usage",
@@ -186,4 +186,7 @@
     pricingImpactCustomRates: "Custom per-token rates",
     pricingImpactSeparateModel: "Separate model: {model}",
     pricingDetectedMode: "Detected mode",
-};
+    pricingPin: "Pin to top",
+    pricingUnpin: "Unpin",
+    pricingDragReorder: "Drag to reorder",
+  };

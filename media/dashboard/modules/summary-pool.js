@@ -1,6 +1,8 @@
 import { cardHelpButton, cardLabel } from "./summary-cards.js";
+import { local } from "./core.js";
 import { getDateLocale, t } from "./i18n.js";
 import { escapeHtml, formatPercent } from "./format.js";
+import { formatDailyBudgetResetCountdown } from "../../../src/daily-budget-reset.ts";
 
 function formatProjectionDate(iso) {
   if (!iso) return "\u2014";
@@ -97,12 +99,14 @@ function renderTodayPaceRow(label, pace) {
 
 function renderTodayPace(poolSeries) {
   if (!poolSeries?.todayAutoPace && !poolSeries?.todayApiPace) return "";
+  const resetCountdown = formatDailyBudgetResetCountdown(local.locale);
   return (
     '<div class="pool-pace">' +
       '<div class="pool-projection-title">' +
         cardHelpButton("poolPace") +
         "<span>" + escapeHtml(t("todayPace")) + "</span>" +
       "</div>" +
+      '<p class="muted small pool-pace-reset" id="daily-budget-reset-countdown">' + escapeHtml(resetCountdown) + "</p>" +
       renderTodayPaceRow("Auto", poolSeries.todayAutoPace) +
       renderTodayPaceRow("API", poolSeries.todayApiPace) +
     "</div>"
@@ -149,6 +153,12 @@ function renderRecommendedPace(poolUsage, poolRecommended) {
       row("API", apiRec, apiUsed) +
     "</div>"
   );
+}
+
+export function updateDailyBudgetResetCountdown() {
+  const el = document.getElementById("daily-budget-reset-countdown");
+  if (!el) return;
+  el.textContent = formatDailyBudgetResetCountdown(local.locale);
 }
 
 export function renderPoolUsageCard(poolUsage, poolDepletion, resetAtIso, poolSeries, poolRecommended) {

@@ -115,13 +115,62 @@
 }
 
 .pricing-expand-btn,
-.pricing-link-btn {
+.pricing-link-btn,
+.pricing-pin-btn {
   border: none;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   padding: 0 4px;
   font-size: 12px;
+}
+
+.pricing-pin-btn {
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.55;
+}
+
+.pricing-pin-btn:hover,
+.pricing-pin-btn.pinned {
+  opacity: 1;
+}
+
+.pricing-pin-btn.pinned {
+  color: var(--accent);
+}
+
+.pricing-row-pinned {
+  background: rgba(158, 197, 254, 0.04);
+}
+
+.pricing-drag-handle {
+  display: inline-block;
+  cursor: grab;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: -0.12em;
+  padding: 0 2px;
+  vertical-align: middle;
+  user-select: none;
+  opacity: 0.65;
+}
+
+.pricing-drag-handle:hover {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.pricing-drag-handle:active {
+  cursor: grabbing;
+}
+
+.pricing-row-pinned.pricing-row-dragging {
+  opacity: 0.45;
+}
+
+.pricing-row-pinned.pricing-row-drag-over td {
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
 .pricing-expand-btn:hover,

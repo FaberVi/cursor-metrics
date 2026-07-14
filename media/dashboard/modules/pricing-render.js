@@ -16,6 +16,7 @@ import {
   getPricingState,
   poolLabel,
   usedModelIdSet,
+  isPricingModelPinned,
 } from "./pricing-shared.js";
 
 export function getFilteredModels() {
@@ -44,7 +45,8 @@ export function getFilteredModels() {
 
   const dir = local.pricingSortOrder === "asc" ? 1 : -1;
   const key = local.pricingSortKey;
-  rows = rows.slice().sort((a, b) => {
+
+  function compareModels(a, b) {
     const usageA = usage[a.id];
     const usageB = usage[b.id];
     if (key === "displayName") return a.displayName.localeCompare(b.displayName) * dir;
@@ -67,7 +69,18 @@ export function getFilteredModels() {
       return (av - bv) * dir;
     }
     return a.displayName.localeCompare(b.displayName);
-  });
+  }
+
+  const pinnedOrder = new Map(local.pricingPinnedIds.map((id, index) => [id, index]));
+  const pinned = [];
+  const unpinned = [];
+  for (const row of rows) {
+    if (pinnedOrder.has(row.id)) pinned.push(row);
+    else unpinned.push(row);
+  }
+  pinned.sort((a, b) => pinnedOrder.get(a.id) - pinnedOrder.get(b.id));
+  unpinned.sort(compareModels);
+  rows = [...pinned, ...unpinned];
 
   return rows;
 }
@@ -168,9 +181,17 @@ function renderModelRow(entry, usageMap, used) {
     ? '<span class="pricing-note" title="' + escapeHtml(entry.notes) + '">ℹ</span>'
     : "";
 
+  const pinned = isPricingModelPinned(entry.id);
+  const dragHandle = pinned
+    ? '<span class="pricing-drag-handle" draggable="true" data-drag-model="' + escapeHtml(entry.id) + '" role="button" tabindex="0" aria-label="' + escapeHtml(t("pricingDragReorder")) + '" title="' + escapeHtml(t("pricingDragReorder")) + '">⋮⋮</span> '
+    : "";
+
   return (
-    '<tr class="pricing-row' + (isUsed ? " pricing-row-used" : "") + (highlight ? " pricing-row-highlight" : "") + '" data-model-id="' + escapeHtml(entry.id) + '">' +
-      '<td><button type="button" class="pricing-expand-btn" data-expand-model="' + escapeHtml(entry.id) + '" aria-expanded="false" title="' + escapeHtml(t("pricingToggleCalc")) + '">▸</button> ' +
+    '<tr class="pricing-row' + (isUsed ? " pricing-row-used" : "") + (highlight ? " pricing-row-highlight" : "") + (pinned ? " pricing-row-pinned" : "") + '" data-model-id="' + escapeHtml(entry.id) + '">' +
+      '<td>' +
+        dragHandle +
+        '<button type="button" class="pricing-pin-btn' + (pinned ? " pinned" : "") + '" data-pin-model="' + escapeHtml(entry.id) + '" aria-pressed="' + (pinned ? "true" : "false") + '" title="' + escapeHtml(pinned ? t("pricingUnpin") : t("pricingPin")) + '">' + (pinned ? "★" : "☆") + "</button> " +
+        '<button type="button" class="pricing-expand-btn" data-expand-model="' + escapeHtml(entry.id) + '" aria-expanded="false" title="' + escapeHtml(t("pricingToggleCalc")) + '">▸</button> ' +
         escapeHtml(entry.displayName) + note +
         (entry.hidden ? ' <span class="pricing-hidden-badge">' + escapeHtml(t("pricingHidden")) + "</span>" : "") +
       "</td>" +

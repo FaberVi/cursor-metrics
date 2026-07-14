@@ -26,6 +26,18 @@ describe("dashboard ui preferences", () => {
     expect(loadDashboardUiPreferences(ctx)).toEqual({ usageFilter: "included", metric: "tokens" });
   });
 
+  it("round-trips pinned model ids through global state", async () => {
+    const { loadDashboardUiPreferences, saveDashboardUiPreferences } = await import("../src/dashboard-ui-state");
+    const ctx = mockContext();
+
+    await saveDashboardUiPreferences(ctx, {
+      pricingPinnedIds: ["auto", "gpt-5", "auto", "", 42],
+    });
+    expect(loadDashboardUiPreferences(ctx)).toEqual({
+      pricingPinnedIds: ["auto", "gpt-5"],
+    });
+  });
+
   it("ignores invalid stored values", async () => {
     const { loadDashboardUiPreferences } = await import("../src/dashboard-ui-state");
     const ctx = mockContext({

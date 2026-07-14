@@ -1,4 +1,4 @@
-import { refs, local } from "./core.js";
+import { refs, local, persistGlobalUi, persistLocal } from "./core.js";
 import { aggregateTheoreticalByModel, formatRateUsd } from "../../../src/model-pricing.ts";
 import { escapeHtml } from "./format.js";
 import { t } from "./i18n.js";
@@ -54,4 +54,33 @@ export function formatDeltaPercent(deltaPercent) {
   if (deltaPercent === null || !Number.isFinite(deltaPercent)) return "—";
   const sign = deltaPercent > 0 ? "+" : "";
   return sign + deltaPercent.toFixed(1) + "%";
+}
+
+export function isPricingModelPinned(modelId) {
+  return local.pricingPinnedIds.includes(modelId);
+}
+
+export function togglePricingModelPin(modelId) {
+  const pinned = local.pricingPinnedIds.slice();
+  const index = pinned.indexOf(modelId);
+  if (index >= 0) {
+    pinned.splice(index, 1);
+  } else {
+    pinned.push(modelId);
+  }
+  local.pricingPinnedIds = pinned;
+}
+
+export function reorderPricingModelPin(draggedId, beforeId) {
+  if (!draggedId || !beforeId || draggedId === beforeId) return;
+  const pinned = local.pricingPinnedIds.filter((id) => id !== draggedId);
+  const insertAt = pinned.indexOf(beforeId);
+  if (insertAt < 0) pinned.push(draggedId);
+  else pinned.splice(insertAt, 0, draggedId);
+  local.pricingPinnedIds = pinned;
+}
+
+export function persistPricingPins() {
+  persistLocal();
+  persistGlobalUi({ pricingPinnedIds: local.pricingPinnedIds.slice() });
 }

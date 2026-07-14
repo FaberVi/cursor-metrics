@@ -28,6 +28,7 @@ import { renderChart } from "./chart.js";
 import { renderPoolChart } from "./pool-chart.js";
 import { setActiveRangeButton, formatUpdatedAt } from "./format.js";
 import { renderSummaryCards } from "./summary.js";
+import { updateDailyBudgetResetCountdown } from "./summary-pool.js";
 import {
   applyTeamMemberConstraints,
   closeEventDetail,
@@ -51,6 +52,9 @@ function applyUiPreferences(prefs) {
   if (prefs.range) local.range = prefs.range;
   if (prefs.usageFilter) local.usageFilter = prefs.usageFilter;
   if (prefs.metric) local.metric = prefs.metric;
+  if (Array.isArray(prefs.pricingPinnedIds)) {
+    local.pricingPinnedIds = prefs.pricingPinnedIds.filter((id) => typeof id === "string" && id.length > 0);
+  }
   persistLocal();
   if (refs.state) renderAll();
 }
@@ -300,3 +304,13 @@ applyActivityTab();
 bindConversationHandlers(vscode);
 vscode.postMessage({ type: "ready" });
 syncDashboardPrefs();
+
+const dailyBudgetResetTimer = setInterval(() => {
+  if (refs.state?.data?.poolUsage) {
+    updateDailyBudgetResetCountdown();
+  }
+}, 60_000);
+
+window.addEventListener("beforeunload", () => {
+  clearInterval(dailyBudgetResetTimer);
+});

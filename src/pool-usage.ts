@@ -3,6 +3,7 @@ import type { DashboardCurrency, DashboardLocale } from "./dashboard-locale";
 import { formatOnDemandStatus } from "./currency-format";
 import { t, tf } from "./i18n";
 import type { PoolDayPace } from "./pool-usage-series";
+import { formatDailyBudgetResetCountdown } from "./daily-budget-reset";
 
 type ProgressBarRenderer = {
   html: (ratio: number) => string;
@@ -91,6 +92,7 @@ export function buildPoolTodayPaceMarkdown(
     `<table width="100%" cellspacing="0" cellpadding="0">`,
     `  <tr><td colspan="2"><sub>${t(locale, "dailyBudget")}</sub></td></tr>`,
     `  <tr><td colspan="2"><sub>${t(locale, "evenSpreadUntilReset")}</sub></td></tr>`,
+    `  <tr><td colspan="2"><sub>${formatDailyBudgetResetCountdown(locale)}</sub></td></tr>`,
     ...rows,
     `</table>`,
     ``,

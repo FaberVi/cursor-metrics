@@ -1,6 +1,6 @@
 {
   "name": "cursor-usage",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/FaberVi/cursor-metrics"
@@ -10,6 +10,8 @@
     "@types/node": "^25.3.0",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.25.0",
+    "playwright": "^1.52.0",
+    "puppeteer": "^25.3.0",
     "typescript": "^5.7.0"
   },
   "activationEvents": [
@@ -142,7 +144,8 @@
     "publish:ovsx": "bun scripts/publish-extension.mjs ovsx",
     "publish:vsm": "bun run package:vsm && bun scripts/publish-extension.mjs vsm",
     "publish:all": "bun run package && bun run publish:ovsx && bun run publish:vsm",
-    "release": "bun run publish:all"
+    "release": "bun run publish:all",
+    "screenshots": "bun scripts/capture-screenshots.mjs"
   },
   "dependencies": {
     "sql.js": "^1.14.1"
