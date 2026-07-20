@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import {
   enrichUsageFromEvents,
+  eventRequestCount,
   extractUsageFromSummary,
   extractUsageTotals,
   mergeTeamIncludedRequests,
@@ -172,7 +173,7 @@ describe("parseUsageEvent", () => {
       model: "claude-4.6-opus-high-thinking",
       kind: "On-Demand",
       totalTokens: 177679,
-      requests: 30.4,
+      requests: 1,
       spendCents: 124.73,
       maxMode: true,
       inputTokens: 3,
@@ -210,13 +211,105 @@ describe("parseUsageEvent", () => {
       parsed!.inputTokens + parsed!.outputTokens + parsed!.cacheWriteTokens + parsed!.cacheReadTokens,
     );
     expect(parsed!.conversationId).toBe("b1992beb-b50f-4b7d-aaff-af4e0ef47e36");
+    expect(parsed!.requests).toBe(1);
+  });
+
+  it("counts one call per included token-metered event instead of summing requestsCosts", () => {
+    const parsed = parseUsageEvent({
+      kind: "USAGE_EVENT_KIND_INCLUDED_IN_BUSINESS",
+      isTokenBasedCall: true,
+      requestsCosts: 29648584,
+      tokenUsage: { inputTokens: 1, outputTokens: 1 },
+    });
+    expect(parsed!.requests).toBe(1);
+    expect(eventRequestCount(parsed!)).toBe(1);
+  });
+
+  it("heals archived rows that stored token-scale values in requests", () => {
+    expect(
+      eventRequestCount({
+        kind: "Included",
+        isTokenBasedCall: true,
+        requests: 29_648_584,
+        totalTokens: 29_648_584,
+        inputTokens: 1000,
+        outputTokens: 500,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      }),
+    ).toBe(1);
+    expect(
+      eventRequestCount({
+        kind: "Included",
+        isTokenBasedCall: true,
+        requests: 23.2,
+        totalTokens: 500_000,
+        inputTokens: 1000,
+        outputTokens: 500,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      }),
+    ).toBe(1);
+    expect(
+      eventRequestCount({
+        kind: "On-Demand",
+        isTokenBasedCall: true,
+        requests: 30.4,
+        totalTokens: 177_679,
+        inputTokens: 3,
+        outputTokens: 20525,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      }),
+    ).toBe(1);
+    expect(
+      eventRequestCount({
+        kind: "Included",
+        isTokenBasedCall: false,
+        requests: 160_958_528,
+        totalTokens: 160_958_528,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      }),
+    ).toBe(1);
+    expect(
+      eventRequestCount({
+        kind: "Included",
+        isTokenBasedCall: false,
+        requests: 58_077_533,
+        totalTokens: 58_077_533,
+        inputTokens: 4089,
+        outputTokens: 1442,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 587_296,
+      }),
+    ).toBe(1);
+  });
+
+  it("keeps fractional counts on legacy request-metered plans", () => {
+    expect(
+      eventRequestCount({
+        kind: "Included",
+        isTokenBasedCall: false,
+        requests: 2,
+      }),
+    ).toBe(2);
+    expect(
+      eventRequestCount({
+        kind: "On-Demand",
+        isTokenBasedCall: false,
+        requests: 1.5,
+      }),
+    ).toBe(1.5);
   });
 });
 
 describe("enrichUsageFromEvents", () => {
   const base: UsagePayload = {
     includedRequests: { used: 0, limit: 0 },
-    onDemand: { state: "unlimited", spendDollars: 0, limitDollars: null },
+    onDemand: { state: "unlimited", onDemandEnabled: true, spendDollars: 0, limitDollars: null },
     poolUsage: null,
     resetsAt: "2026-08-02T15:37:46.000Z",
     planInfo: null,
@@ -238,7 +331,7 @@ describe("enrichUsageFromEvents", () => {
 
   it("fills included usage from billing-cycle events when API totals are zero", () => {
     const enriched = enrichUsageFromEvents(base, events, Date.parse("2026-07-05T12:00:00.000Z"));
-    expect(enriched.includedRequests.used).toBe(42);
-    expect(enriched.includedRequests.limit).toBe(42);
+    expect(enriched.includedRequests.used).toBe(1);
+    expect(enriched.includedRequests.limit).toBe(1);
   });
 });

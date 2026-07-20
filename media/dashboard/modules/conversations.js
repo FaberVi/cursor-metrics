@@ -21,6 +21,7 @@ import {
   formatRequests,
   formatCents,
   formatTokens,
+  eventRequestCount,
 } from "./format.js";
 import { t } from "./i18n.js";
 import { renderTable, showEventDetail, getSortedEvents } from "./tables.js";
@@ -225,7 +226,7 @@ export function showConversationDetail(row) {
       "<td>" + escapeHtml(formatModelLabel(event.model)) + "</td>" +
       "<td>" + escapeHtml(event.kind) + "</td>" +
       '<td class="num">' + formatTokens(event.totalTokens || 0) + "</td>" +
-      '<td class="num">' + formatRequests(event.requests || 0) + "</td>" +
+      '<td class="num">' + formatRequests(eventRequestCount(event)) + "</td>" +
       '<td class="num">' + formatCents(Math.round(eventSpendDollars(event) * 100)) + "</td>" +
     "</tr>";
   }).join("");
@@ -259,6 +260,7 @@ export function showConversationDetail(row) {
 
   ui.eventDetailOverlay.classList.remove("hidden");
   ui.eventDetailOverlay.setAttribute("aria-hidden", "false");
+  ui.eventDetailClose?.removeAttribute("tabindex");
   ui.eventDetailClose?.focus();
 
   if (row.conversationId) {

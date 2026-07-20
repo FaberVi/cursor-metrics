@@ -11,6 +11,7 @@ export type {
 
 export {
   enrichUsageFromEvents,
+  eventRequestCount,
   extractUsageFromSummary,
   extractUsageTotals,
   mergeTeamIncludedRequests,

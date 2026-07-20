@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.8.0] - 2026-07-20
+
+### Changed
+- Pool label **Auto** → **First-party models** (IT: *Modelli first-party*) across status bar, tooltip, dashboard, and help text — aligned with Cursor billing wording.
+- Grok catalog display name → **Cursor Grok 4.5**.
+- Dashboard usage chart always shows daily **tokens**; the usage filter (All / Included / On-Demand) moved to **Usage by model** and applies to chart, breakdown, and pricing usage columns.
+- Pricing tab layout: full-width dashboard body, model names and badges kept on one line.
+
+### Fixed
+- Hide on-demand credit in status bar, tooltip, and dashboard when on-demand usage is disabled (no more `0,00 €/0,00 €` with state `limited`).
+- First-party pool series and breakdown: classify Auto / Composer / Cursor Grok via pricing catalog `pool: "firstParty"` instead of only `model === "default"`.
+- Billing-cycle cutoff: month overflow and local-timezone edge cases at end of month (`getBillingCycleCutoff` / `shiftUtcMonth`).
+- Recommended pool usage target now uses a wall-clock denominator so it reaches 100% at reset.
+- Dashboard daily budget bar normalizes `used/allowance` correctly.
+- Pool usage series: uniform fallback shape when live pool % is > 0 but spend events are empty.
+- Screenshot preview / tooltip HTML for html-validate (void elements, no inline styles, overlay focusability).
+- **Request counts** for token-metered events: charts and tables count one call per event instead of surfacing API `requestsCosts` or polluted archive values.
+- **Theoretical cost** for effort/thinking model slugs (e.g. `-fast`, `-thinking-high`) via expanded pricing alias resolution.
+- Event archive deduplication after request normalization (fingerprint no longer depends on derived `requests` field; one-time store migration).
+
 ## [0.7.1] - 2026-07-14
 
 ### Added

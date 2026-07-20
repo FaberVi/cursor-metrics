@@ -2,30 +2,33 @@
 import { t } from "./i18n.js";
 import {
   escapeHtml,
-  eventSpendDollars,
+  chartSpendDollars,
+  formatBillableSpendCents,
   formatDayLabel,
-  formatDollars,
   formatModelLabel,
   formatPercent,
-  formatRequests,
   formatTokens,
   getDurationCutoff,
   matchesUsageFilter,
   startOfUtcDay,
+  stateGeneratedAt,
   toMillis,
 } from "./format.js";
 
 function buildChartSeries() {
-  const cutoff = getDurationCutoff(local.range, refs.state.resetsAt, refs.state.generatedAt);
+  const events = Array.isArray(refs.state?.events) ? refs.state.events : [];
+  const now = stateGeneratedAt();
+  const cutoff = getDurationCutoff(local.range, refs.state?.resetsAt ?? null, now);
   const start = startOfUtcDay(cutoff);
-  let end = startOfUtcDay(refs.state.generatedAt);
-  if (local.range === "billingCycle" && refs.state.resetsAt) {
+  let end = startOfUtcDay(now);
+  if (local.range === "billingCycle" && refs.state?.resetsAt) {
     const reset = new Date(refs.state.resetsAt);
     if (!Number.isNaN(reset.getTime())) {
       const cycleEnd = startOfUtcDay(reset.getTime() - DAY_MS);
       if (cycleEnd > end) end = cycleEnd;
     }
   }
+  if (end < start) end = start;
   const days = [];
   for (let d = start; d <= end; d += DAY_MS) days.push(d);
   if (days.length === 0) days.push(end);
@@ -42,19 +45,17 @@ function buildChartSeries() {
     return arr;
   };
 
-  for (const e of refs.state.events) {
+  for (const e of events) {
     const ts = toMillis(e.timestamp);
     if (!Number.isFinite(ts) || ts < cutoff) continue;
     if (!matchesUsageFilter(e, local.usageFilter)) continue;
     const day = startOfUtcDay(ts);
     const idx = dayIndex.get(day);
     if (idx === undefined) continue;
-    const value =
-      local.metric === "tokens" ? (e.totalTokens || 0) :
-      local.metric === "requests" ? (e.requests || 0) :
-      eventSpendDollars(e);
+    const spend = chartSpendDollars(e);
+    const value = e.totalTokens || 0;
     ensureArr(perModel, e.model)[idx] += value;
-    ensureArr(perModelSpend, e.model)[idx] += eventSpendDollars(e);
+    ensureArr(perModelSpend, e.model)[idx] += spend;
   }
 
   const datasets = [];
@@ -143,35 +144,32 @@ function renderExternalTooltip(context, opts) {
   const dataIndex = tooltip.dataPoints?.[0]?.dataIndex;
   const chartDayMs = Number.isInteger(dataIndex) ? opts.dayMs?.[dataIndex] : undefined;
   const poolDaily = chartDayMs !== undefined ? getPoolDailyForDay(chartDayMs) : null;
-  const isSpend = opts.isSpend;
-  const metricLabel = isSpend ? t("metricSpend") : opts.metric === "tokens" ? t("metricTokens") : t("metricRequests");
-
-  const formatMetric = (v) =>
-    isSpend ? formatDollars(v) : opts.metric === "tokens" ? formatTokens(v) : formatRequests(v);
+  const metricLabel = t("metricTokens");
 
   const rows = dataPoints.map((dp) => {
     const ds = dp.dataset;
     const v = dp.parsed.y || 0;
-    const spend = isSpend ? v : (ds.spendByDay ? (ds.spendByDay[dp.dataIndex] || 0) : 0);
+    const spend = ds.spendByDay ? (ds.spendByDay[dp.dataIndex] || 0) : 0;
     const color = ds.backgroundColor || colorForModel(ds.label);
     return (
       '<tr>' +
         '<td><span class="t-dot" style="background:' + color + '"></span>' + escapeHtml(ds.label) + '</td>' +
-        '<td class="num">' + formatMetric(v) + '</td>' +
-        (isSpend ? "" : '<td class="num">' + formatDollars(spend) + '</td>') +
+        '<td class="num">' + formatTokens(v) + '</td>' +
+        '<td class="num">' + formatBillableSpendCents(Math.round(spend * 100)) + '</td>' +
       '</tr>'
     );
   }).join("");
 
-  const headerCols = isSpend
-    ? '<th>' + escapeHtml(t("colModel")) + '</th><th class="num">' + metricLabel + '</th>'
-    : '<th>' + escapeHtml(t("colModel")) + '</th><th class="num">' + metricLabel + '</th><th class="num">' + escapeHtml(t("colSpend")) + '</th>';
+  const headerCols =
+    '<th>' + escapeHtml(t("colModel")) + '</th>' +
+    '<th class="num">' + metricLabel + '</th>' +
+    '<th class="num">' + escapeHtml(t("colSpend")) + '</th>';
 
   const poolSection = poolDaily
     ? '<div class="t-subtitle">' + escapeHtml(t("poolUsageDay")) + "</div>" +
       '<table class="t-table"><tbody>' +
-        '<tr><td>Auto</td><td class="num">' + formatPercent(poolDaily.auto) + "%</td></tr>" +
-        '<tr><td>API</td><td class="num">' + formatPercent(poolDaily.api) + "%</td></tr>" +
+        '<tr><td>' + escapeHtml(t("poolFirstParty")) + '</td><td class="num">' + formatPercent(poolDaily.auto) + "%</td></tr>" +
+        '<tr><td>' + escapeHtml(t("poolApi")) + '</td><td class="num">' + formatPercent(poolDaily.api) + "%</td></tr>" +
       "</tbody></table>"
     : "";
 
@@ -202,10 +200,19 @@ function renderExternalTooltip(context, opts) {
 }
 
 export function renderChart() {
-  const series = buildChartSeries();
+  if (!ui.canvas || !refs.state) return;
+
+  let series;
+  try {
+    series = buildChartSeries();
+  } catch (err) {
+    if (ui.chartNote) {
+      ui.chartNote.textContent = String(err instanceof Error ? err.message : err);
+    }
+    return;
+  }
   rebuildModelColorMap(series);
-  const isSpend = local.metric === "spend";
-  const yLabel = isSpend ? t("metricSpend") : local.metric === "tokens" ? t("metricTokens") : t("metricRequests");
+  const yLabel = t("metricTokens");
 
   const chartData = {
     labels: series.labels,
@@ -246,7 +253,7 @@ export function renderChart() {
       },
       tooltip: {
         enabled: false,
-        external: (context) => renderExternalTooltip(context, { isSpend, metric: local.metric, dayMs: series.dayMs }),
+        external: (context) => renderExternalTooltip(context, { dayMs: series.dayMs }),
       },
     },
     scales: {
@@ -262,7 +269,7 @@ export function renderChart() {
         ticks: {
           color: muted,
           font: { size: 10 },
-          callback: (v) => isSpend ? formatDollars(v) : local.metric === "tokens" ? formatTokens(v) : v.toLocaleString(),
+          callback: (v) => (Number.isFinite(v) ? formatTokens(v) : ""),
         },
         grid: { color: grid, drawBorder: false, drawTicks: false },
         border: { display: false },
@@ -272,5 +279,6 @@ export function renderChart() {
   };
 
   setChart(new Chart(ui.canvas.getContext("2d"), { type: "bar", data: chartData, options: opts }));
-  ui.chartNote.textContent = "";
+  requestAnimationFrame(() => refs.chart?.resize());
+  if (ui.chartNote) ui.chartNote.textContent = "";
 }

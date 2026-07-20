@@ -70,11 +70,11 @@ function renderPoolTooltip(context) {
     '<table class="t-table"><thead><tr>' +
       "<th>Pool</th><th class=\"num\">Used</th><th class=\"num\">Budget</th><th class=\"num\">Balance</th>" +
     "</tr></thead><tbody>" +
-      '<tr><td><span class="t-dot" style="background:' + AUTO_COLOR + '"></span>Auto</td>' +
+      '<tr><td><span class="t-dot" style="background:' + AUTO_COLOR + '"></span>' + escapeHtml(t("poolFirstParty")) + "</td>" +
         '<td class="num">' + formatPercent(series.dailyAutoPercent[idx] || 0) + "%</td>" +
         '<td class="num">' + formatPercent(autoPace?.allowance || 0) + "%</td>" +
         '<td class="num">' + escapeHtml(formatPaceResidual(autoPace?.residual || 0)) + "</td></tr>" +
-      '<tr><td><span class="t-dot" style="background:' + API_COLOR + '"></span>API</td>' +
+      '<tr><td><span class="t-dot" style="background:' + API_COLOR + '"></span>' + escapeHtml(t("poolApi")) + "</td>" +
         '<td class="num">' + formatPercent(series.dailyApiPercent[idx] || 0) + "%</td>" +
         '<td class="num">' + formatPercent(apiPace?.allowance || 0) + "%</td>" +
         '<td class="num">' + escapeHtml(formatPaceResidual(apiPace?.residual || 0)) + "</td></tr>" +
@@ -107,9 +107,9 @@ function renderPoolPaceTooltip(context) {
     '<table class="t-table"><thead><tr>' +
       "<th>Pool</th><th class=\"num\">Daily balance</th>" +
     "</tr></thead><tbody>" +
-      '<tr><td><span class="t-dot" style="background:' + AUTO_COLOR + '"></span>Auto</td>' +
+      '<tr><td><span class="t-dot" style="background:' + AUTO_COLOR + '"></span>' + escapeHtml(t("poolFirstParty")) + "</td>" +
         '<td class="num">' + escapeHtml(formatPaceResidual(autoResidual)) + "</td></tr>" +
-      '<tr><td><span class="t-dot" style="background:' + API_COLOR + '"></span>API</td>' +
+      '<tr><td><span class="t-dot" style="background:' + API_COLOR + '"></span>' + escapeHtml(t("poolApi")) + "</td>" +
         '<td class="num">' + escapeHtml(formatPaceResidual(apiResidual)) + "</td></tr>" +
     "</tbody></table>";
 
@@ -133,7 +133,7 @@ function renderPoolPaceChart(series, muted, grid) {
       labels: series.labels,
       datasets: [
         {
-          label: "Auto balance",
+          label: t("poolFirstParty") + " balance",
           data: autoResiduals,
           backgroundColor: (ctx) => ((ctx.parsed?.y ?? 0) >= 0 ? UNDER_COLOR : OVER_COLOR),
           borderColor: (ctx) => ((ctx.parsed?.y ?? 0) >= 0 ? UNDER_COLOR : OVER_COLOR),
@@ -143,7 +143,7 @@ function renderPoolPaceChart(series, muted, grid) {
           barPercentage: 0.82,
         },
         {
-          label: "API balance",
+          label: t("poolApi") + " balance",
           data: apiResiduals,
           backgroundColor: (ctx) => ((ctx.parsed?.y ?? 0) >= 0 ? "rgba(182, 227, 193, 0.55)" : "rgba(248, 113, 113, 0.55)"),
           borderColor: (ctx) => ((ctx.parsed?.y ?? 0) >= 0 ? "rgba(182, 227, 193, 0.55)" : "rgba(248, 113, 113, 0.55)"),
@@ -220,7 +220,7 @@ export function renderPoolChart() {
       labels: series.labels,
       datasets: [
         {
-          label: "Auto",
+          label: t("poolFirstParty"),
           data: series.autoPercent,
           borderColor: AUTO_COLOR,
           backgroundColor: AUTO_COLOR,
@@ -230,7 +230,7 @@ export function renderPoolChart() {
           fill: false,
         },
         {
-          label: "API",
+          label: t("poolApi"),
           data: series.apiPercent,
           borderColor: API_COLOR,
           backgroundColor: API_COLOR,

@@ -4,7 +4,7 @@ import {
   formatVariantPriceImpact,
   resolveModelPricing,
 } from "../../../src/model-pricing.ts";
-import { escapeHtml, formatCents, formatTokens, rangeLabel } from "./format.js";
+import { escapeHtml, formatBillableSpendCents, formatCents, formatTokens, rangeLabel } from "./format.js";
 import { t } from "./i18n.js";
 import { translateVariantLabel, translateVariantNote } from "./pricing-catalog-i18n.js";
 import { renderCalculatorPanel, updateCalculator } from "./pricing-calculator.js";
@@ -172,7 +172,7 @@ function renderModelRow(entry, usageMap, used) {
 
   const usageCells = usage
     ? '<td class="num">' + formatTokens(usage.totalTokens) + "</td>" +
-      '<td class="num">' + formatCents(usage.actualSpendCents) + "</td>" +
+      '<td class="num">' + formatBillableSpendCents(usage.actualSpendCents) + "</td>" +
       '<td class="num">' + formatCents(usage.theoreticalCents) + "</td>" +
       '<td class="num ' + deltaClass(usage.deltaPercent) + '">' + formatDeltaPercent(usage.deltaPercent) + "</td>"
     : '<td class="num muted">—</td><td class="num muted">—</td><td class="num muted">—</td><td class="num muted">—</td>';
@@ -192,8 +192,10 @@ function renderModelRow(entry, usageMap, used) {
         dragHandle +
         '<button type="button" class="pricing-pin-btn' + (pinned ? " pinned" : "") + '" data-pin-model="' + escapeHtml(entry.id) + '" aria-pressed="' + (pinned ? "true" : "false") + '" title="' + escapeHtml(pinned ? t("pricingUnpin") : t("pricingPin")) + '">' + (pinned ? "★" : "☆") + "</button> " +
         '<button type="button" class="pricing-expand-btn" data-expand-model="' + escapeHtml(entry.id) + '" aria-expanded="false" title="' + escapeHtml(t("pricingToggleCalc")) + '">▸</button> ' +
-        escapeHtml(entry.displayName) + note +
-        (entry.hidden ? ' <span class="pricing-hidden-badge">' + escapeHtml(t("pricingHidden")) + "</span>" : "") +
+        '<span class="pricing-model-label">' +
+          '<span class="pricing-model-name">' + escapeHtml(entry.displayName) + note + "</span>" +
+          (entry.hidden ? '<span class="pricing-hidden-badge">' + escapeHtml(t("pricingHidden")) + "</span>" : "") +
+        "</span>" +
       "</td>" +
       '<td>' + escapeHtml(entry.provider) + "</td>" +
       '<td><span class="pricing-pool-badge pricing-pool-' + entry.pool + '">' + escapeHtml(poolLabel(entry.pool)) + "</span></td>" +

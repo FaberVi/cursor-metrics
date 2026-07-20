@@ -1,5 +1,7 @@
 ﻿import { DAY_MS, local, refs, ui } from "./core.js";
 import { getDateLocale, t } from "./i18n.js";
+import { getBillingCycleCutoff } from "../../../src/cursor-api-utils.ts";
+import { eventRequestCount } from "../../../src/cursor-usage-parsing.ts";
 
 export function startOfUtcDay(ts) {
   const d = new Date(ts);
@@ -8,11 +10,7 @@ export function startOfUtcDay(ts) {
 
 export function getDurationCutoff(range, resetAtIso, now) {
   if (range === "billingCycle") {
-    if (!resetAtIso) return now - 31 * DAY_MS;
-    const reset = new Date(resetAtIso);
-    if (Number.isNaN(reset.getTime())) return now - 31 * DAY_MS;
-    reset.setMonth(reset.getMonth() - 1);
-    return reset.getTime();
+    return getBillingCycleCutoff(resetAtIso, now);
   }
   const map = { "1d": 1, "7d": 7, "30d": 30 };
   return now - (map[range] || 30) * DAY_MS;
@@ -25,6 +23,7 @@ export function matchesUsageFilter(event, filter) {
 }
 
 export function formatTokens(n) {
+  if (!Number.isFinite(n) || n === 0) return "0";
   const trim = (v) => {
     const s = v.toFixed(1);
     return s.endsWith(".0") ? s.slice(0, -2) : s;
@@ -167,6 +166,8 @@ export function formatRequests(n) {
   return n.toFixed(1);
 }
 
+export { eventRequestCount };
+
 export function isOnDemandEvent(event) {
   return event.kind === "On-Demand";
 }
@@ -180,14 +181,38 @@ export function eventSpendDollars(event) {
   return (event.spendCents || 0) / 100;
 }
 
+/** Spend axis for the usage chart: billable charges, or token cost when included usage has no charge. */
+export function chartSpendDollars(event) {
+  const billable = eventSpendDollars(event);
+  if (billable > 0) return billable;
+  if (refs.state?.quotaAwareEventDisplay && isIncludedEvent(event)) {
+    const tokenCost = (event.tokenCostCents || 0) / 100;
+    if (tokenCost > 0) return tokenCost;
+  }
+  return 0;
+}
+
+export function stateGeneratedAt() {
+  const generatedAt = refs.state?.generatedAt;
+  return Number.isFinite(generatedAt) && generatedAt > 0 ? generatedAt : Date.now();
+}
+
 export function eventRequestsText(event) {
   if (refs.state && refs.state.quotaAwareEventDisplay && !isIncludedEvent(event)) return "\u2014";
-  return formatRequests(event.requests || 0);
+  return formatRequests(eventRequestCount(event));
 }
 
 export function eventSpendText(event) {
   if (refs.state && refs.state.quotaAwareEventDisplay && !isOnDemandEvent(event)) return "\u2014";
   return formatDollars(eventSpendDollars(event));
+}
+
+/** Aggregated billable spend for tables: em dash when nothing was charged (included pool usage). */
+export function formatBillableSpendCents(cents) {
+  if (!Number.isFinite(cents) || cents <= 0) {
+    return refs.state?.quotaAwareEventDisplay ? "\u2014" : formatCents(0);
+  }
+  return formatCents(cents);
 }
 
 export function formatDayLabel(dayMs) {

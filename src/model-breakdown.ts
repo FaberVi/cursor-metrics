@@ -1,4 +1,6 @@
 import type { DailySpendRow, UsageEvent } from "./cursor-api";
+import { getBillingCycleCutoff } from "./cursor-api-utils";
+import { eventRequestCount } from "./cursor-usage-parsing";
 
 export type UsageDuration = "1d" | "7d" | "30d" | "billingCycle";
 
@@ -48,12 +50,7 @@ function sortModelAggregates(
 }
 
 function getBillingCycleStart(resetAtIso: string, now = Date.now()): number {
-  const resetAt = new Date(resetAtIso);
-  if (Number.isNaN(resetAt.getTime())) {
-    return now - 31 * 86_400_000;
-  }
-  resetAt.setMonth(resetAt.getMonth() - 1);
-  return resetAt.getTime();
+  return getBillingCycleCutoff(resetAtIso, now);
 }
 
 export function getDurationCutoff(
@@ -103,7 +100,7 @@ export function aggregateByModel(
     if (event.timestamp < cutoff) continue;
     const entry = modelMap.get(event.model) ?? { totalTokens: 0, requests: 0 };
     entry.totalTokens += event.totalTokens;
-    entry.requests += event.requests;
+    entry.requests += eventRequestCount(event);
     modelMap.set(event.model, entry);
   }
 

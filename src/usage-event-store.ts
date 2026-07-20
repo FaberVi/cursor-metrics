@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import type { UsageEvent } from "./cursor-api-types";
+import { normalizeUsageEventRequests } from "./cursor-usage-parsing";
 import { loadSqlJs, type SqlJsDatabase, type SqlJsStatement } from "./sql-js-loader";
 import { usageEventFingerprint } from "./usage-event-fingerprint";
 
@@ -61,7 +62,103 @@ export class UsageEventStore {
     `);
     this.db.run("CREATE INDEX IF NOT EXISTS idx_usage_events_timestamp ON usage_events(timestamp DESC)");
     this.db.run("CREATE INDEX IF NOT EXISTS idx_usage_events_conversation ON usage_events(conversation_id)");
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS store_meta (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      )
+    `);
+    this.migrateStoredEventsIfNeeded();
     this.persist();
+  }
+
+  private getMeta(key: string): string | null {
+    if (!this.db) return null;
+    const stmt = this.db.prepare("SELECT value FROM store_meta WHERE key = ?");
+    stmt.bind([key]);
+    let value: string | null = null;
+    if (stmt.step()) {
+      const row = stmt.getAsObject() as { value?: string };
+      value = typeof row.value === "string" ? row.value : null;
+    }
+    stmt.free();
+    return value;
+  }
+
+  private setMeta(key: string, value: string): void {
+    if (!this.db) return;
+    this.db.run(
+      "INSERT OR REPLACE INTO store_meta (key, value) VALUES (?, ?)",
+      [key, value],
+    );
+  }
+
+  /** Dedupe rows and rewrite payloads after request-count normalization / fingerprint change. */
+  private migrateStoredEventsIfNeeded(): void {
+    if (!this.db || this.getMeta("event_store_schema") === "2") return;
+
+    const select = this.db.prepare("SELECT payload_json, synced_at FROM usage_events");
+    const byFingerprint = new Map<string, { event: UsageEvent; syncedAt: number }>();
+
+    while (select.step()) {
+      const row = select.getAsObject() as { payload_json?: string; synced_at?: number };
+      if (typeof row.payload_json !== "string") continue;
+      try {
+        const event = normalizeUsageEventRequests(JSON.parse(row.payload_json) as UsageEvent);
+        const fingerprint = usageEventFingerprint(event);
+        const syncedAt = typeof row.synced_at === "number" ? row.synced_at : 0;
+        const existing = byFingerprint.get(fingerprint);
+        if (!existing || syncedAt >= existing.syncedAt) {
+          byFingerprint.set(fingerprint, { event, syncedAt });
+        }
+      } catch {
+        // skip corrupt rows
+      }
+    }
+    select.free();
+
+    this.db.run("DELETE FROM usage_events");
+
+    if (byFingerprint.size > 0) {
+      const insert = this.db.prepare(`
+        INSERT INTO usage_events (
+          event_key, timestamp, conversation_id, model, kind, total_tokens, requests, spend_cents,
+          max_mode, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
+          token_cost_cents, cursor_token_fee, is_token_based, is_headless, is_chargeable,
+          payload_json, synced_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const [fingerprint, { event, syncedAt }] of byFingerprint) {
+        insert.bind([
+          fingerprint,
+          event.timestamp,
+          event.conversationId ?? null,
+          event.model,
+          event.kind,
+          event.totalTokens ?? 0,
+          event.requests ?? 0,
+          event.spendCents ?? 0,
+          event.maxMode ? 1 : 0,
+          event.inputTokens ?? 0,
+          event.outputTokens ?? 0,
+          event.cacheWriteTokens ?? 0,
+          event.cacheReadTokens ?? 0,
+          event.tokenCostCents ?? 0,
+          event.cursorTokenFee ?? 0,
+          event.isTokenBasedCall ? 1 : 0,
+          event.isHeadless ? 1 : 0,
+          event.isChargeable ? 1 : 0,
+          JSON.stringify(event),
+          syncedAt,
+        ]);
+        insert.step();
+        insert.reset();
+      }
+      insert.free();
+    }
+
+    this.setMeta("event_store_schema", "2");
   }
 
   upsertEvents(events: UsageEvent[]): number {
@@ -79,26 +176,27 @@ export class UsageEventStore {
     const now = Date.now();
     let inserted = 0;
     for (const event of events) {
+      const normalized = normalizeUsageEventRequests(event);
       stmt.bind([
-        usageEventFingerprint(event),
-        event.timestamp,
-        event.conversationId ?? null,
-        event.model,
-        event.kind,
-        event.totalTokens ?? 0,
-        event.requests ?? 0,
-        event.spendCents ?? 0,
-        event.maxMode ? 1 : 0,
-        event.inputTokens ?? 0,
-        event.outputTokens ?? 0,
-        event.cacheWriteTokens ?? 0,
-        event.cacheReadTokens ?? 0,
-        event.tokenCostCents ?? 0,
-        event.cursorTokenFee ?? 0,
-        event.isTokenBasedCall ? 1 : 0,
-        event.isHeadless ? 1 : 0,
-        event.isChargeable ? 1 : 0,
-        JSON.stringify(event),
+        usageEventFingerprint(normalized),
+        normalized.timestamp,
+        normalized.conversationId ?? null,
+        normalized.model,
+        normalized.kind,
+        normalized.totalTokens ?? 0,
+        normalized.requests ?? 0,
+        normalized.spendCents ?? 0,
+        normalized.maxMode ? 1 : 0,
+        normalized.inputTokens ?? 0,
+        normalized.outputTokens ?? 0,
+        normalized.cacheWriteTokens ?? 0,
+        normalized.cacheReadTokens ?? 0,
+        normalized.tokenCostCents ?? 0,
+        normalized.cursorTokenFee ?? 0,
+        normalized.isTokenBasedCall ? 1 : 0,
+        normalized.isHeadless ? 1 : 0,
+        normalized.isChargeable ? 1 : 0,
+        JSON.stringify(normalized),
         now,
       ]);
       stmt.step();
@@ -121,7 +219,7 @@ export class UsageEventStore {
       const row = stmt.getAsObject() as { payload_json?: string };
       if (typeof row.payload_json === "string") {
         try {
-          events.push(JSON.parse(row.payload_json) as UsageEvent);
+          events.push(normalizeUsageEventRequests(JSON.parse(row.payload_json) as UsageEvent));
         } catch {
           // skip corrupt rows
         }

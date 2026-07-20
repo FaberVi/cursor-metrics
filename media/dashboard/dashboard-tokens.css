@@ -46,8 +46,8 @@ body {
   font-size: 13px;
   color: var(--fg);
   background: var(--bg);
-  margin: 0 auto;
-  max-width: 1000px;
+  margin: 0;
+  max-width: none;
   padding: 16px 20px;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;

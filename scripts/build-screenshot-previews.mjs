@@ -7,9 +7,25 @@ import { buildUsageOverviewMarkdown } from "../src/tooltip.ts";
 
 const progressBarHtml = (ratio) => {
   const pct = Math.max(4, Math.round(Math.min(Math.max(ratio, 0), 1) * 100));
-  return `<span class="bar-track"><span class="bar" style="width:${pct}%"></span></span>`;
+  return `<span class="bar-track"><span class="bar bar-w-${pct}"></span></span>`;
 };
 const summaryDividerHtml = () => '<span class="divider"></span>';
+
+/** VS Code tooltip HTML uses legacy table attrs; modernize only for the static screenshot preview. */
+function modernizeTooltipPreviewHtml(html) {
+  return html
+    .replace(/ width="18%"/g, ' class="col-label"')
+    .replace(/ width="2%"/g, ' class="col-divider"')
+    .replace(/ width="[^"]*"/g, "")
+    .replace(/ cellspacing="[^"]*"/g, "")
+    .replace(/ cellpadding="[^"]*"/g, "")
+    .replace(/ valign="[^"]*"/g, "")
+    .replace(/ align="[^"]*"/g, "")
+    .replace(/<table([^>]*)>/g, "<table$1><tbody>")
+    .replace(/<\/table>/g, "</tbody></table>");
+}
+
+const barWidthCss = Array.from({ length: 100 }, (_, i) => `.bar-w-${i + 1} { width: ${i + 1}%; }`).join("\n    ");
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(root, "media", "dashboard");
@@ -84,7 +100,7 @@ for (let day = 0; day < 12; day++) {
 
 const data = {
   includedRequests: { used: 500, limit: 500 },
-  onDemand: { state: "limited", spendDollars: 12.5, limitDollars: 200 },
+  onDemand: { state: "limited", onDemandEnabled: true, spendDollars: 12.5, limitDollars: 200 },
   poolUsage: { autoPercentUsed: 61.4, apiPercentUsed: 38.2, totalPercentUsed: 49.8 },
   resetsAt,
   planInfo: {
@@ -143,11 +159,8 @@ const shell = renderDashboardHtml(mockWebview, {
 
 function buildPreviewHtml(tab) {
   const webviewState = { ...persistedWebview, mainTab: tab };
-  const inject = `
-<style>
-  body { padding: 16px; }
-</style>
-<script nonce="screenshot-nonce">
+  const inject = `<script nonce="screenshot-nonce">
+  document.documentElement.classList.add("screenshot-preview");
   window.__SCREENSHOT_TAB__ = ${JSON.stringify(tab)};
   window.acquireVsCodeApi = () => ({
     getState: () => (${JSON.stringify(webviewState)}),
@@ -183,10 +196,10 @@ function buildPreviewHtml(tab) {
 </script>`;
 
   return shell
-    .replace('<html lang="en">', '<html lang="it">')
+    .replace('<html lang="en">', '<html lang="it" class="screenshot-preview">')
     .replace(
-      '<script nonce="screenshot-nonce" src="chart.umd.js"></script>',
-      `${inject}\n  <script nonce="screenshot-nonce" src="chart.umd.js"></script>`,
+      '  <script nonce="screenshot-nonce" src="chart.umd.js"></script>',
+      `  ${inject}\n  <script nonce="screenshot-nonce" src="chart.umd.js"></script>`,
     );
 }
 
@@ -205,10 +218,14 @@ const tooltipMd = buildUsageOverviewMarkdown(
   false,
 );
 
+const tooltipBody = modernizeTooltipPreviewHtml(
+  tooltipMd.replace(/<divider \/>/g, '<span class="divider"></span>'),
+);
+
 const tooltipHtml = `<!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Cursor Usage Tooltip Preview</title>
   <style>
     body {
@@ -243,16 +260,19 @@ const tooltipHtml = `<!DOCTYPE html>
       line-height: 1.45;
     }
     .tooltip table { width: 100%; border-collapse: collapse; margin: 4px 0; }
+    .tooltip .col-label { width: 18%; }
+    .tooltip .col-divider { width: 2%; vertical-align: top; }
     .tooltip sub { color: #9d9d9d; font-size: 11px; }
     .tooltip strong { color: #fff; font-weight: 600; }
     .tooltip td, .tooltip th { padding: 2px 4px; vertical-align: middle; }
     .bar-track { display: inline-block; width: 120px; height: 6px; background: #3c3c3c; border-radius: 999px; overflow: hidden; vertical-align: middle; }
     .bar { display: block; height: 100%; background: #007acc; border-radius: 999px; }
+    ${barWidthCss}
     .divider { display: inline-block; width: 1px; height: 48px; background: #454545; }
   </style>
 </head>
 <body>
-  <div class="tooltip">${tooltipMd.replace(/<divider \/>/g, '<span class="divider"></span>')}</div>
+  <div class="tooltip">${tooltipBody}</div>
   <div class="status-bar">61,4% Auto, 38,2% API, 11,50 €</div>
 </body>
 </html>`;

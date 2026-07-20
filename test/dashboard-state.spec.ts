@@ -28,7 +28,7 @@ const baseEvent = {
 
 const sampleData: UsagePayload = {
   includedRequests: { used: 100, limit: 500 },
-  onDemand: { state: "limited", spendDollars: 12.5, limitDollars: 100 },
+  onDemand: { state: "limited", onDemandEnabled: true, spendDollars: 12.5, limitDollars: 100 },
   poolUsage: null,
   planInfo: null,
   resetsAt: null,
@@ -92,6 +92,65 @@ describe("buildDashboardState", () => {
     const state = buildDashboardState(null, [], [], false, "boom", now);
     expect(state.data).toBeNull();
     expect(state.error).toBe("boom");
+  });
+
+  it("keeps pool daily budget independent of the display event range", () => {
+    const poolNow = Date.UTC(2026, 6, 14, 12, 0, 0);
+    const resetsAt = "2026-08-02T15:37:46.000Z";
+    const early = Date.UTC(2026, 6, 3, 14, 0, 0);
+    const recent = Date.UTC(2026, 6, 14, 10, 0, 0);
+    const poolData: UsagePayload = {
+      ...sampleData,
+      resetsAt,
+      poolUsage: { autoPercentUsed: 40, apiPercentUsed: 20, totalPercentUsed: 30 },
+      planInfo: {
+        accountType: "individual",
+        planKind: "ultra",
+        seatType: null,
+        tier: "Ultra",
+        priceLabel: null,
+        displayName: "Ultra",
+      },
+    };
+    const cycleEvents: UsageEvent[] = [
+      {
+        ...baseEvent,
+        timestamp: early,
+        model: "default",
+        kind: "Included",
+        totalTokens: 1000,
+        requests: 1,
+        spendCents: 200,
+      },
+      {
+        ...baseEvent,
+        timestamp: recent,
+        model: "default",
+        kind: "Included",
+        totalTokens: 1000,
+        requests: 1,
+        spendCents: 50,
+      },
+    ];
+    const recentOnly = cycleEvents.filter((e) => e.timestamp >= poolNow - 2 * dayMs);
+    const withFilteredOnly = buildDashboardState(poolData, recentOnly, [], false, null, poolNow);
+    const withFullPoolHistory = buildDashboardState(
+      poolData,
+      recentOnly,
+      [],
+      false,
+      null,
+      poolNow,
+      true,
+      {},
+      0,
+      cycleEvents,
+    );
+
+    expect(recentOnly).toHaveLength(1);
+    expect(withFilteredOnly.poolUsageSeries?.todayAutoPace?.used).toBeCloseTo(40, 5);
+    expect(withFullPoolHistory.poolUsageSeries?.todayAutoPace?.used).toBeCloseTo(8, 5);
+    expect(withFullPoolHistory.events).toEqual(recentOnly);
   });
 });
 

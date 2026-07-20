@@ -1,6 +1,7 @@
 import { local, refs, ui } from "./core.js";
 import {
   eventSpendDollars,
+  eventRequestCount,
   formatModelLabel,
   getActiveCurrency,
   isIncludedEvent,
@@ -38,7 +39,7 @@ export function exportCsv() {
       tokenField(e, "outputTokens"),
       tokenField(e, "cacheWriteTokens"),
       tokenField(e, "cacheReadTokens"),
-      refs.state && refs.state.quotaAwareEventDisplay && !isIncludedEvent(e) ? "" : (e.requests || 0),
+      refs.state && refs.state.quotaAwareEventDisplay && !isIncludedEvent(e) ? "" : eventRequestCount(e),
       refs.state && refs.state.quotaAwareEventDisplay && !isOnDemandEvent(e) ? "" : toCsvMoney(eventSpendDollars(e)),
       toCsvMoney((e.tokenCostCents || 0) / 100),
       toCsvMoney((e.cursorTokenFee || 0) / 100),
@@ -58,8 +59,7 @@ export function exportCsv() {
 }
 
 export function applyTeamMemberConstraints() {
-  const spendOpt = ui.metricFilter.querySelector('option[value="spend"]');
-  if (spendOpt) spendOpt.disabled = false;
+  // Reserved for plan-specific chart/table constraints.
 }
 
 export function showError(msg) {

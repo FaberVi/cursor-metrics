@@ -1,6 +1,6 @@
 import { refs, local, persistGlobalUi, persistLocal } from "./core.js";
 import { aggregateTheoreticalByModel, formatRateUsd } from "../../../src/model-pricing.ts";
-import { escapeHtml } from "./format.js";
+import { escapeHtml, matchesUsageFilter } from "./format.js";
 import { t } from "./i18n.js";
 
 export function getPricingState() {
@@ -17,13 +17,16 @@ export function getEstimateOpts() {
   return {
     applyCursorTokenRate: isTeamPlan(),
     cursorTokenRatePerMillion: catalog?.cursorTokenRatePerMillion ?? 0.25,
+    quotaAwareEventDisplay: refs.state?.quotaAwareEventDisplay !== false,
   };
 }
 
 export function aggregateForRange() {
   if (!refs.state) return { usedModelIds: [], theoreticalByModel: {} };
+  const events = Array.isArray(refs.state.events) ? refs.state.events : [];
+  const filtered = events.filter((e) => matchesUsageFilter(e, local.usageFilter));
   return aggregateTheoreticalByModel(
-    refs.state.events,
+    filtered,
     local.range,
     refs.state.resetsAt,
     refs.state.generatedAt,

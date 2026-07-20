@@ -2,6 +2,7 @@ import { refs, setSelectedEventIdx, TOKEN_COLORS, ui } from "./core.js";
 import {
   escapeHtml,
   eventRequestsText,
+  eventRequestCount,
   eventSpendDollars,
   eventSpendText,
   formatCents,
@@ -57,7 +58,7 @@ function renderEventDetailMetrics(event) {
   const cacheWrite = tokenField(event, "cacheWriteTokens");
   const cacheRead = tokenField(event, "cacheReadTokens");
   const total = event.totalTokens || 0;
-  const requests = event.requests || 0;
+  const requests = eventRequestCount(event);
   const spend = eventSpendDollars(event);
   const spendCents = Math.round(spend * 100);
   const promptSide = input + cacheWrite + cacheRead;
@@ -211,6 +212,7 @@ export function showEventDetail(event, eventIdx) {
 
   ui.eventDetailOverlay.classList.remove("hidden");
   ui.eventDetailOverlay.setAttribute("aria-hidden", "false");
+  ui.eventDetailClose?.removeAttribute("tabindex");
   ui.eventDetailClose?.focus();
 }
 
@@ -220,5 +222,6 @@ export function closeEventDetail() {
   refs.selectedConversationId = null;
   ui.eventDetailOverlay.classList.add("hidden");
   ui.eventDetailOverlay.setAttribute("aria-hidden", "true");
+  ui.eventDetailClose?.setAttribute("tabindex", "-1");
   renderTable();
 }

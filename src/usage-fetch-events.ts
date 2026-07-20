@@ -3,7 +3,7 @@ import { apiLog } from "./cursor-api-logger";
 import type { AuthInfo, CursorHeaders, DailySpendRow, SetupCache, UsageEvent } from "./cursor-api-types";
 import { asRecord, MAX_USAGE_EVENT_PAGES, toNumber, withTimeout } from "./cursor-api-utils";
 import { ensureSetup } from "./cursor-setup";
-import { parseUsageEvent } from "./cursor-usage-parsing";
+import { normalizeUsageEventRequests, parseUsageEvent } from "./cursor-usage-parsing";
 
 function parseDailySpendRow(row: unknown): DailySpendRow | null {
   const data = asRecord(row);
@@ -193,5 +193,5 @@ export async function fetchUsageEvents(opts: FetchUsageEventsOptions = {}): Prom
   }
 
   apiLog(`Fetched ${allEvents.length} usage events across ${Math.min(page, maxPages)} page(s)`);
-  return allEvents;
+  return allEvents.map(normalizeUsageEventRequests);
 }

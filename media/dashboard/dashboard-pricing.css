@@ -77,11 +77,15 @@
 }
 
 .pricing-pool-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 11px;
-  padding: 2px 6px;
+  line-height: 1;
+  padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid var(--border);
+  vertical-align: middle;
 }
 
 .pricing-pool-firstParty {
@@ -105,13 +109,40 @@
   50% { background: rgba(158, 197, 254, 0.16); }
 }
 
+#pricing-table th:first-child,
+#pricing-table td:first-child {
+  min-width: 300px;
+  white-space: nowrap;
+}
+
+.pricing-model-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: middle;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+}
+
+.pricing-model-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
 .pricing-hidden-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
+  line-height: 1;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0 4px;
-  margin-left: 4px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .pricing-expand-btn,
@@ -305,8 +336,18 @@
   font-size: 11px;
 }
 
-.pricing-variants-table th,
-.pricing-variants-table td {
-  padding: 4px 8px;
+.pricing-section .table-scroll {
+  overflow-x: auto;
+}
+
+@media (min-width: 1100px) {
+  .pricing-section .table-scroll {
+    overflow-x: visible;
+  }
+}
+
+#pricing-table th.num,
+#pricing-table td.num {
+  white-space: nowrap;
 }
 

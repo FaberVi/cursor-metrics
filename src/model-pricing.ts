@@ -1,4 +1,5 @@
 import type { UsageEvent } from "./cursor-api-types";
+import { eventRequestCount } from "./cursor-usage-parsing";
 import type { UsageDuration } from "./model-breakdown";
 import { getDurationCutoff } from "./model-breakdown";
 import rawCatalog from "./data/model-pricing.json";
@@ -95,12 +96,202 @@ export type TheoreticalModelCost = {
 export type EstimateEventOptions = {
   applyCursorTokenRate?: boolean;
   cursorTokenRatePerMillion?: number;
+  /** When true, Actual spend counts only On-Demand charges (included pool usage = 0). */
+  quotaAwareEventDisplay?: boolean;
 };
 
 const MILLION = 1_000_000;
 
 function normalizeModelId(modelId: string): string {
   return modelId.trim().toLowerCase();
+}
+
+/** Longest-first suffixes stripped from unknown API slugs before resolving the base model. */
+const MODEL_ID_STRIP_SUFFIXES = [
+  "-thinking-xhigh",
+  "-thinking-high",
+  "-thinking-medium",
+  "-thinking-low",
+  "-medium-thinking",
+  "-high-thinking",
+  "-xhigh-thinking",
+  "-thinking",
+  "-xhigh",
+  "-medium",
+  "-high",
+  "-fast",
+] as const;
+
+const THINKING_EFFORT_TIERS = ["xhigh", "high", "medium", "low"] as const;
+
+function slugForms(slug: string): string[] {
+  const forms = new Set<string>([slug]);
+  if (slug.includes(".")) forms.add(slug.replace(/\./g, "-"));
+  if (slug.includes("-")) forms.add(slug.replace(/-/g, "."));
+  return [...forms];
+}
+
+function isThinkingLikeVariant(variant: ModelPricingVariant): boolean {
+  const id = variant.id.toLowerCase();
+  const label = variant.label.toLowerCase();
+  return id.includes("thinking") || label.includes("thinking");
+}
+
+function isReasoningEffortVariant(variant: ModelPricingVariant): boolean {
+  if (variant.priceImpact !== "sameRateMoreTokens") return false;
+  const id = variant.id.toLowerCase();
+  const label = variant.label.toLowerCase();
+  return id === "high" || id === "medium" || label.includes("reasoning") || isThinkingLikeVariant(variant);
+}
+
+function generateVariantAliases(entry: ModelPricingEntry, variant: ModelPricingVariant): string[] {
+  const out = new Set<string>(variant.aliases ?? []);
+  const roots = new Set<string>([entry.id, ...(entry.aliases ?? [])]);
+  for (const alias of variant.aliases ?? []) roots.add(alias);
+
+  for (const root of roots) {
+    for (const form of slugForms(root)) {
+      if (isThinkingLikeVariant(variant)) {
+        out.add(`${form}-thinking`);
+        for (const effort of THINKING_EFFORT_TIERS) {
+          out.add(`${form}-thinking-${effort}`);
+          out.add(`${form}-${effort}-thinking`);
+        }
+        if (variant.id === "medium-thinking") {
+          out.add(`${form}-medium-thinking`);
+          out.add(`${form}-thinking-medium`);
+        }
+        if (variant.id === "high-thinking") {
+          out.add(`${form}-high-thinking`);
+        }
+      }
+
+      if (variant.id === "high" && isReasoningEffortVariant(variant)) {
+        out.add(`${form}-high`);
+        for (const effort of THINKING_EFFORT_TIERS) {
+          if (effort !== "high") out.add(`${form}-${effort}`);
+        }
+      }
+
+      if (variant.id === "medium" && variant.priceImpact === "sameRateMoreTokens") {
+        out.add(`${form}-medium`);
+        for (const effort of THINKING_EFFORT_TIERS) {
+          if (effort !== "medium") out.add(`${form}-${effort}`);
+        }
+      }
+    }
+  }
+
+  return [...out];
+}
+
+function findReasoningVariant(entry: ModelPricingEntry): ModelPricingVariant | null {
+  const variants = entry.variants ?? [];
+  return (
+    variants.find((variant) => isThinkingLikeVariant(variant)) ??
+    variants.find((variant) => variant.id === "high-thinking" || variant.id === "medium-thinking") ??
+    variants.find((variant) => isReasoningEffortVariant(variant)) ??
+    null
+  );
+}
+
+function stripModelSuffixes(normalized: string): string {
+  let id = normalized;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const suffix of MODEL_ID_STRIP_SUFFIXES) {
+      if (id.endsWith(suffix)) {
+        id = id.slice(0, -suffix.length);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return id;
+}
+
+function resolveFromAliasIndex(modelId: string): ResolvedModelPricing | null {
+  if (!aliasIndex) return null;
+  return aliasIndex.get(normalizeModelId(modelId)) ?? null;
+}
+
+function resolveThinkingFallback(normalized: string): ResolvedModelPricing | null {
+  const baseId = stripModelSuffixes(normalized);
+  const base = resolveFromAliasIndex(baseId);
+  if (!base) return null;
+
+  const reasoning = findReasoningVariant(base.entry);
+  if (reasoning) {
+    return {
+      entry: base.entry,
+      variant: reasoning,
+      effectiveRates: resolveEffectiveRates(base.entry, reasoning),
+    };
+  }
+
+  return base;
+}
+
+function resolveWithSuffixFallback(modelId: string): ResolvedModelPricing | null {
+  const normalized = normalizeModelId(modelId);
+
+  for (const suffix of MODEL_ID_STRIP_SUFFIXES) {
+    if (!normalized.endsWith(suffix)) continue;
+    const stem = normalized.slice(0, -suffix.length);
+    let parent = resolveFromAliasIndex(stem);
+
+    if (!parent && normalized.includes("thinking")) {
+      parent = resolveFromAliasIndex(stripModelSuffixes(normalized));
+    }
+
+    if (!parent) continue;
+
+    if (suffix === "-fast") {
+      const fastVariant = parent.entry.variants?.find((variant) => variant.id === "fast");
+      if (fastVariant) {
+        return {
+          entry: parent.entry,
+          variant: fastVariant,
+          effectiveRates: resolveEffectiveRates(parent.entry, fastVariant),
+        };
+      }
+    }
+
+    const wantsThinking = suffix.includes("thinking") || normalized.includes("thinking");
+    if (wantsThinking && !parent.variant) {
+      const reasoning = findReasoningVariant(parent.entry);
+      if (reasoning) {
+        return {
+          entry: parent.entry,
+          variant: reasoning,
+          effectiveRates: resolveEffectiveRates(parent.entry, reasoning),
+        };
+      }
+    }
+
+    return {
+      entry: parent.entry,
+      variant: parent.variant,
+      effectiveRates: resolveEffectiveRates(parent.entry, parent.variant),
+    };
+  }
+
+  if (normalized.includes("thinking")) {
+    return resolveThinkingFallback(normalized);
+  }
+
+  return null;
+}
+
+function registerAlias(
+  index: Map<string, ResolvedModelPricing>,
+  alias: string,
+  resolved: ResolvedModelPricing,
+): void {
+  for (const form of slugForms(alias)) {
+    index.set(normalizeModelId(form), resolved);
+  }
 }
 
 function rateCostCents(tokens: number, ratePerMillion: number | undefined): number {
@@ -190,9 +381,9 @@ function buildAliasIndex(catalog: ModelPricingCatalog): Map<string, ResolvedMode
       variant: null,
       effectiveRates: entry.rates,
     };
-    index.set(normalizeModelId(entry.id), baseResolved);
+    registerAlias(index, entry.id, baseResolved);
     for (const alias of entry.aliases ?? []) {
-      index.set(normalizeModelId(alias), baseResolved);
+      registerAlias(index, alias, baseResolved);
     }
     for (const variant of entry.variants ?? []) {
       const variantResolved: ResolvedModelPricing = {
@@ -200,8 +391,8 @@ function buildAliasIndex(catalog: ModelPricingCatalog): Map<string, ResolvedMode
         variant,
         effectiveRates: resolveEffectiveRates(entry, variant),
       };
-      for (const alias of variant.aliases ?? []) {
-        index.set(normalizeModelId(alias), variantResolved);
+      for (const alias of generateVariantAliases(entry, variant)) {
+        registerAlias(index, alias, variantResolved);
       }
     }
   }
@@ -221,8 +412,7 @@ export function resolveModelPricingDetailed(
   maxMode = false,
 ): ResolvedModelPricing | null {
   getModelPricingCatalog();
-  if (!aliasIndex) return null;
-  const resolved = aliasIndex.get(normalizeModelId(modelId));
+  const resolved = resolveFromAliasIndex(modelId) ?? resolveWithSuffixFallback(modelId);
   if (!resolved) return null;
   return {
     ...resolved,
@@ -367,8 +557,10 @@ export function aggregateTheoreticalByModel(
     existing.outputTokens += event.outputTokens || 0;
     existing.cacheWriteTokens += event.cacheWriteTokens || 0;
     existing.cacheReadTokens += event.cacheReadTokens || 0;
-    existing.requests += event.requests || 0;
-    existing.actualSpendCents += event.spendCents || 0;
+    existing.requests += eventRequestCount(event);
+    const billableSpend =
+      opts.quotaAwareEventDisplay && event.kind !== "On-Demand" ? 0 : event.spendCents || 0;
+    existing.actualSpendCents += billableSpend;
     existing.theoreticalCents += estimate.totalCents;
     byCanonical.set(entry.id, existing);
   }
@@ -378,8 +570,11 @@ export function aggregateTheoreticalByModel(
 
   for (const [modelId, row] of byCanonical.entries()) {
     row.deltaCents = row.actualSpendCents - row.theoreticalCents;
+    // No meaningful delta when nothing was billed (included-pool-only usage).
     row.deltaPercent =
-      row.theoreticalCents > 0 ? (row.deltaCents / row.theoreticalCents) * 100 : null;
+      row.actualSpendCents > 0 && row.theoreticalCents > 0
+        ? (row.deltaCents / row.theoreticalCents) * 100
+        : null;
     theoreticalByModel[modelId] = row;
     usedModelIds.push(...row.eventModelIds);
   }

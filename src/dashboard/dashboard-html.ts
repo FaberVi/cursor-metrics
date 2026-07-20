@@ -27,11 +27,11 @@ export function renderDashboardHtml(
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="${csp}" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cursor Usage</title>
-  <link rel="stylesheet" href="${assets.cssUri}" />
+  <link rel="stylesheet" href="${assets.cssUri}">
 </head>
 <body>
   <header class="dashboard-header">
@@ -90,23 +90,7 @@ function renderUsageTabPanel(): string {
     <div class="chart-header">
       <div class="section-title-block">
         <h2 data-i18n="section.usage.title">Your Usage</h2>
-        <p class="muted" data-i18n="section.usage.desc">Per-day usage over the selected range</p>
-      </div>
-      <div class="chart-filters">
-        <label><span data-i18n="filter.usage.label">Usage:</span>
-          <select id="usage-filter">
-            <option value="all" data-i18n="filter.all">All</option>
-            <option value="included" data-i18n="filter.included">Included</option>
-            <option value="ondemand" data-i18n="filter.ondemand">On-Demand</option>
-          </select>
-        </label>
-        <label><span data-i18n="filter.metric.label">Metric:</span>
-          <select id="metric-filter">
-            <option value="spend" data-i18n="metric.spend">Spend</option>
-            <option value="tokens" data-i18n="metric.tokens" selected>Tokens</option>
-            <option value="requests" data-i18n="metric.requests">Requests</option>
-          </select>
-        </label>
+        <p class="muted" data-i18n="section.usage.desc">Per-day token usage over the selected range</p>
       </div>
     </div>
     <div id="section-body-usage" class="section-body">
@@ -118,11 +102,22 @@ function renderUsageTabPanel(): string {
   </section>
 
   <section class="model-breakdown-section" data-section="breakdown">
-    <div class="events-header">
+    <div class="events-header breakdown-header">
       <div class="section-title-block">
         <h2 data-i18n="section.breakdown.title">Usage by Model</h2>
       </div>
-      <span class="muted small" id="breakdown-range-label"></span>
+      <div class="breakdown-header-aside">
+        <div class="breakdown-filters">
+          <label><span data-i18n="filter.usage.label">Usage:</span>
+            <select id="usage-filter">
+              <option value="all" data-i18n="filter.all">All</option>
+              <option value="included" data-i18n="filter.included">Included</option>
+              <option value="ondemand" data-i18n="filter.ondemand">On-Demand</option>
+            </select>
+          </label>
+        </div>
+        <span class="muted small" id="breakdown-range-label"></span>
+      </div>
     </div>
     <div id="section-body-breakdown" class="section-body">
       <div class="table-scroll">
@@ -133,6 +128,7 @@ function renderUsageTabPanel(): string {
               <th data-sort="requests" class="sortable num" data-i18n="col.requests">Requests</th>
               <th data-sort="totalTokens" class="sortable num" data-i18n="col.tokens">Tokens</th>
               <th data-sort="spendCents" class="sortable num" data-i18n="col.spend">Spend</th>
+              <th data-sort="theoreticalCents" class="sortable num" data-i18n="col.theoretical">Theoretical</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -150,7 +146,7 @@ function renderPoolsTabPanel(): string {
     <div class="chart-header">
       <div class="section-title-block">
         <h2 data-i18n="section.pool.title">Pool Usage</h2>
-        <p class="muted" data-i18n="section.pool.desc">Daily Auto and API pool consumption for the billing cycle</p>
+        <p class="muted" data-i18n="section.pool.desc">Daily First-party models and API pool consumption for the billing cycle</p>
       </div>
     </div>
     <div id="section-body-pool" class="section-body">
@@ -187,8 +183,8 @@ function renderPricingTabPanel(): string {
     <div id="section-body-pricing" class="section-body">
       <div class="pricing-pool-banner">
         <div class="pricing-pool-card">
-          <strong data-i18n="pricingPoolFirstParty">First-party pool</strong>
-          <p class="muted small" data-i18n="pricingPoolFirstPartyDesc">Auto, Composer 2.5, Grok 4.5 — generous included usage</p>
+          <strong data-i18n="pricingPoolFirstParty">First-party models</strong>
+          <p class="muted small" data-i18n="pricingPoolFirstPartyDesc">Auto, Composer 2.5, Cursor Grok 4.5 — generous included usage</p>
         </div>
         <div class="pricing-pool-card">
           <strong data-i18n="pricingPoolApi">API pool</strong>
@@ -197,7 +193,7 @@ function renderPricingTabPanel(): string {
       </div>
       <p class="pricing-modes-note muted small" data-i18n="pricingModesNote">Reasoning/thinking usually keeps the same $/M rates but uses more tokens. Fast and Max Mode can change per-token rates — see the Modes table under each model.</p>
       <div class="pricing-toolbar">
-        <input id="pricing-search" type="search" class="pricing-search" data-i18n-placeholder="pricingSearchPlaceholder" placeholder="Search models…" />
+        <input id="pricing-search" type="search" class="pricing-search" data-i18n-placeholder="pricingSearchPlaceholder" placeholder="Search models…">
         <label class="pricing-filter-label">
           <span data-i18n="pricingFilterProvider">Provider</span>
           <select id="pricing-provider-filter"></select>
@@ -206,20 +202,20 @@ function renderPricingTabPanel(): string {
           <span data-i18n="pricingFilterPool">Pool</span>
           <select id="pricing-pool-filter">
             <option value="all" data-i18n="pricingFilterAllPools">All pools</option>
-            <option value="firstParty" data-i18n="pricingPoolFirstParty">First-party</option>
+            <option value="firstParty" data-i18n="pricingPoolFirstParty">First-party models</option>
             <option value="api" data-i18n="pricingPoolApi">API</option>
           </select>
         </label>
         <label class="pricing-filter-label pricing-used-toggle">
-          <input id="pricing-used-only" type="checkbox" />
+          <input id="pricing-used-only" type="checkbox">
           <span data-i18n="pricingFilterUsedOnly">Only models I use</span>
         </label>
       </div>
       <div class="pricing-legend muted small">
-        <span><span class="token-dot" style="background:#9ec5fe"></span> <span data-i18n="pricingInput">Input</span></span>
-        <span><span class="token-dot" style="background:#f7c5a0"></span> <span data-i18n="pricingCacheWrite">Cache write</span></span>
-        <span><span class="token-dot" style="background:#d3b9f2"></span> <span data-i18n="pricingCacheRead">Cache read</span></span>
-        <span><span class="token-dot" style="background:#b6e3c1"></span> <span data-i18n="pricingOutput">Output</span></span>
+        <span><span class="token-dot token-dot-input"></span> <span data-i18n="pricingInput">Input</span></span>
+        <span><span class="token-dot token-dot-cache-write"></span> <span data-i18n="pricingCacheWrite">Cache write</span></span>
+        <span><span class="token-dot token-dot-cache-read"></span> <span data-i18n="pricingCacheRead">Cache read</span></span>
+        <span><span class="token-dot token-dot-output"></span> <span data-i18n="pricingOutput">Output</span></span>
       </div>
       <div class="table-scroll">
         <table id="pricing-table">
@@ -310,14 +306,14 @@ function renderActivityTabPanel(): string {
 }
 
 function renderEventDetailOverlay(): string {
-  return `<div id="event-detail-overlay" class="event-detail-overlay hidden" aria-hidden="true">
+  return `<div id="event-detail-overlay" class="event-detail-overlay hidden">
     <div class="event-detail-panel" role="dialog" aria-modal="true" aria-labelledby="event-detail-title">
       <div class="event-detail-header">
         <div>
           <h2 id="event-detail-title" data-i18n="event.details">Event details</h2>
           <p id="event-detail-subtitle" class="muted small"></p>
         </div>
-        <button id="event-detail-close" type="button" aria-label="Close event details" data-i18n-aria="closeEventDetails">×</button>
+        <button id="event-detail-close" type="button" tabindex="-1" aria-label="Close event details" data-i18n-aria="closeEventDetails">×</button>
       </div>
       <div id="event-detail-body" class="event-detail-body"></div>
     </div>

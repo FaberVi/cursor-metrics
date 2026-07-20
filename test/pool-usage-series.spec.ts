@@ -38,9 +38,18 @@ const poolUsage: NonNullable<UsagePayload["poolUsage"]> = {
 };
 
 describe("isAutoPoolEvent", () => {
-  it("treats default model as Auto pool", () => {
+  it("treats catalog first-party models as the Auto/first-party pool", () => {
     expect(isAutoPoolEvent({ ...baseEvent, timestamp: now, model: "default", spendCents: 100 })).toBeTrue();
+    expect(isAutoPoolEvent({ ...baseEvent, timestamp: now, model: "auto", spendCents: 100 })).toBeTrue();
+    expect(isAutoPoolEvent({ ...baseEvent, timestamp: now, model: "composer-2", spendCents: 100 })).toBeTrue();
+    expect(isAutoPoolEvent({ ...baseEvent, timestamp: now, model: "composer-2.5", spendCents: 100 })).toBeTrue();
+    expect(isAutoPoolEvent({ ...baseEvent, timestamp: now, model: "grok-4.5", spendCents: 100 })).toBeTrue();
+    expect(isAutoPoolEvent({ ...baseEvent, timestamp: now, model: "cursor-grok-4.5-high", spendCents: 100 })).toBeTrue();
+  });
+
+  it("treats API-pool models as the API pool", () => {
     expect(isAutoPoolEvent({ ...baseEvent, timestamp: now, model: "gpt-5", spendCents: 100 })).toBeFalse();
+    expect(isAutoPoolEvent({ ...baseEvent, timestamp: now, model: "composer-1", spendCents: 100 })).toBeFalse();
   });
 });
 
@@ -70,12 +79,46 @@ describe("buildPoolUsageSeries", () => {
     expect(series.apiPercent[2]).toBeCloseTo(20, 5);
   });
 
+  it("counts Composer and Grok included spend toward the first-party pool", () => {
+    const firstPartyEvents: UsageEvent[] = [
+      { ...baseEvent, timestamp: cycleStart + 3_600_000, model: "composer-2", spendCents: 150 },
+      { ...baseEvent, timestamp: cycleStart + dayMs + 3_600_000, model: "grok-4.5", spendCents: 50 },
+      { ...baseEvent, timestamp: cycleStart + dayMs + 3_600_000, model: "gpt-5", spendCents: 100 },
+    ];
+    const series = buildPoolUsageSeries(
+      firstPartyEvents,
+      { autoPercentUsed: 40, apiPercentUsed: 10, totalPercentUsed: 25 },
+      resetsAt,
+      now,
+    )!;
+
+    expect(series.dailyAutoPercent[0]).toBeCloseTo(30, 5);
+    expect(series.dailyAutoPercent[1]).toBeCloseTo(10, 5);
+    expect(series.dailyApiPercent[1]).toBeCloseTo(10, 5);
+    expect(series.autoPercent.at(-1)).toBeCloseTo(40, 5);
+    expect(series.apiPercent.at(-1)).toBeCloseTo(10, 5);
+  });
+
+  it("falls back to an even daily shape when included spend events are missing", () => {
+    const series = buildPoolUsageSeries(
+      [],
+      { autoPercentUsed: 40, apiPercentUsed: 20, totalPercentUsed: 30 },
+      resetsAt,
+      now,
+    )!;
+    const dayCount = series.labels.length;
+    expect(series.autoPercent.at(-1)).toBeCloseTo(40, 5);
+    expect(series.apiPercent.at(-1)).toBeCloseTo(20, 5);
+    expect(series.dailyAutoPercent[0]).toBeCloseTo(40 / dayCount, 5);
+    expect(series.dailyApiPercent[0]).toBeCloseTo(20 / dayCount, 5);
+  });
+
   it("computes daily pacing residual against even spread until reset", () => {
     const series = buildPoolUsageSeries(events, poolUsage, resetsAt, now)!;
     const resetDay = Date.UTC(2026, 7, 2, 0, 0, 0);
     const startDay = Date.UTC(2026, 6, 2, 0, 0, 0);
     const totalCycleDays = Math.round((resetDay - startDay) / dayMs) + 1;
-    const firstAuto = series.dailyAutoPace[0];
+    const firstAuto = series.dailyAutoPace[0]!;
     expect(firstAuto.allowance).toBeCloseTo(100 / totalCycleDays, 4);
     expect(firstAuto.residual).toBeCloseTo(firstAuto.allowance - firstAuto.used, 5);
     expect(series.todayAutoPace).toEqual(series.dailyAutoPace.at(-1) ?? null);
@@ -85,20 +128,27 @@ describe("buildPoolUsageSeries", () => {
 describe("computeDailyPoolPacing", () => {
   it("shrinks the daily allowance as the cycle progresses", () => {
     const pace = computeDailyPoolPacing([10, 25], [10, 15], 10);
-    expect(pace[0].allowance).toBeCloseTo(10, 5);
-    expect(pace[0].residual).toBeCloseTo(0, 5);
-    expect(pace[1].allowance).toBeCloseTo(10, 5);
-    expect(pace[1].residual).toBeCloseTo(-5, 5);
+    expect(pace[0]!.allowance).toBeCloseTo(10, 5);
+    expect(pace[0]!.residual).toBeCloseTo(0, 5);
+    expect(pace[1]!.allowance).toBeCloseTo(10, 5);
+    expect(pace[1]!.residual).toBeCloseTo(-5, 5);
   });
 });
 
 describe("computeRecommendedPoolUsage", () => {
   it("returns even-spread cumulative target for the elapsed cycle", () => {
     const recommended = computeRecommendedPoolUsage(resetsAt, now)!;
-    const totalDays = Math.round((Date.UTC(2026, 7, 2) - Date.UTC(2026, 6, 2)) / dayMs) + 1;
-    const elapsedDays = (now - cycleStart) / dayMs;
-    expect(recommended.autoRecommended).toBeCloseTo((elapsedDays / totalDays) * 100, 4);
+    const resetMs = new Date(resetsAt).getTime();
+    const elapsedMs = now - cycleStart;
+    const cycleDurationMs = resetMs - cycleStart;
+    expect(recommended.autoRecommended).toBeCloseTo((elapsedMs / cycleDurationMs) * 100, 4);
     expect(recommended.apiRecommended).toBe(recommended.autoRecommended);
+  });
+
+  it("reaches 100% at billing reset", () => {
+    const resetMs = new Date(resetsAt).getTime();
+    const recommended = computeRecommendedPoolUsage(resetsAt, resetMs)!;
+    expect(recommended.autoRecommended).toBeCloseTo(100, 5);
   });
 });
 

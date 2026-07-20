@@ -52,12 +52,12 @@ function renderDepletionLine(label, projection, resetAtIso) {
 function renderTodayPaceRow(label, pace) {
   if (!pace) return "";
   const { allowance, used, residual } = pace;
-  const usedWidth = Math.min(Math.max(used, 0), 100);
-  const allowanceWidth = Math.min(Math.max(allowance, 0), 100);
-  const budgetZoneWidth =
-    residual > 0 ? Math.min(Math.max(allowance - used, 0), 100 - usedWidth) : 0;
-  const overWidth =
-    residual < 0 ? Math.min(Math.abs(residual), 100 - allowanceWidth) : 0;
+  // Normalize to today's allowance so the bar is readable (matches tooltip markdown).
+  const usedRatio = allowance > 0 ? used / allowance : 0;
+  const usedWidth = Math.min(Math.max(usedRatio, 0), 1) * 100;
+  const allowanceWidth = 100;
+  const budgetZoneWidth = usedRatio < 1 ? (1 - Math.min(usedRatio, 1)) * 100 : 0;
+  const overWidth = usedRatio > 1 ? Math.min((usedRatio - 1) * 100, 100) : 0;
 
   let statusText;
   let statusClass;
@@ -107,8 +107,8 @@ function renderTodayPace(poolSeries) {
         "<span>" + escapeHtml(t("todayPace")) + "</span>" +
       "</div>" +
       '<p class="muted small pool-pace-reset" id="daily-budget-reset-countdown">' + escapeHtml(resetCountdown) + "</p>" +
-      renderTodayPaceRow("Auto", poolSeries.todayAutoPace) +
-      renderTodayPaceRow("API", poolSeries.todayApiPace) +
+      renderTodayPaceRow(t("poolFirstParty"), poolSeries.todayAutoPace) +
+      renderTodayPaceRow(t("poolApi"), poolSeries.todayApiPace) +
     "</div>"
   );
 }
@@ -149,8 +149,8 @@ function renderRecommendedPace(poolUsage, poolRecommended) {
         "<span>" + escapeHtml(t("recommendedPace")) + "</span>" +
       "</div>" +
       '<p class="muted small pool-recommended-desc">' + escapeHtml(t("recommendedPaceDesc")) + "</p>" +
-      row("Auto", autoRec, autoUsed) +
-      row("API", apiRec, apiUsed) +
+      row(t("poolFirstParty"), autoRec, autoUsed) +
+      row(t("poolApi"), apiRec, apiUsed) +
     "</div>"
   );
 }
@@ -166,8 +166,8 @@ export function renderPoolUsageCard(poolUsage, poolDepletion, resetAtIso, poolSe
   const apiPct = Math.min(Math.max(poolUsage.apiPercentUsed, 0), 100);
   const totalPct = Math.min(Math.max(poolUsage.totalPercentUsed, 0), 100);
   const projections = poolDepletion
-    ? renderDepletionLine("Auto", poolDepletion.auto, resetAtIso) +
-      renderDepletionLine("API", poolDepletion.api, resetAtIso)
+    ? renderDepletionLine(t("poolFirstParty"), poolDepletion.auto, resetAtIso) +
+      renderDepletionLine(t("poolApi"), poolDepletion.api, resetAtIso)
     : "";
 
   return (
@@ -176,12 +176,12 @@ export function renderPoolUsageCard(poolUsage, poolDepletion, resetAtIso, poolSe
       '<div class="card-value">' + formatPercent(totalPct) + "% " + escapeHtml(t("totalUsed")) + "</div>" +
       '<div class="pool-rows">' +
         '<div class="pool-row">' +
-          '<span class="pool-label">Auto</span>' +
+          '<span class="pool-label">' + escapeHtml(t("poolFirstParty")) + "</span>" +
           '<div class="progress pool-progress"><div style="width:' + autoPct + '%"></div></div>' +
           '<span class="pool-pct">' + formatPercent(autoPct) + "%</span>" +
         "</div>" +
         '<div class="pool-row">' +
-          '<span class="pool-label">API</span>' +
+          '<span class="pool-label">' + escapeHtml(t("poolApi")) + "</span>" +
           '<div class="progress pool-progress"><div style="width:' + apiPct + '%"></div></div>' +
           '<span class="pool-pct">' + formatPercent(apiPct) + "%</span>" +
         "</div>" +

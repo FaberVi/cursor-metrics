@@ -1,5 +1,6 @@
 import type { UsageEvent, UsagePayload } from "./cursor-api-types";
 import { getBillingCycleCutoff } from "./cursor-api-utils";
+import { resolveModelPricing } from "./model-pricing";
 
 const DAY_MS = 86_400_000;
 
@@ -60,8 +61,12 @@ export function formatPoolDayLabel(dayMs: number): string {
   });
 }
 
+/** Included spend for Cursor first-party models (Auto, Composer 2.5, Cursor Grok 4.5). */
 export function isAutoPoolEvent(event: UsageEvent): boolean {
-  return event.model === "default";
+  const entry = resolveModelPricing(event.model);
+  if (entry) return entry.pool === "firstParty";
+  // Legacy / unknown ids that still map to the Auto routing pool.
+  return event.model === "default" || event.model === "auto";
 }
 
 export function poolIncludedCostCents(event: UsageEvent): number {
@@ -89,10 +94,11 @@ export function computeRecommendedPoolUsage(
 ): PoolRecommendedUsage | null {
   if (!resetsAt) return null;
   const cycleStart = getBillingCycleCutoff(resetsAt, now);
-  const totalDays = countCycleDays(cycleStart, resetsAt);
-  if (totalDays <= 0) return null;
-  const elapsedDays = Math.min(Math.max((now - cycleStart) / DAY_MS, 0), totalDays);
-  const recommended = (elapsedDays / totalDays) * 100;
+  const resetMs = new Date(resetsAt).getTime();
+  if (Number.isNaN(resetMs)) return null;
+  const cycleDurationMs = Math.max(resetMs - cycleStart, 1);
+  const elapsedMs = Math.min(Math.max(now - cycleStart, 0), cycleDurationMs);
+  const recommended = (elapsedMs / cycleDurationMs) * 100;
   return { autoRecommended: recommended, apiRecommended: recommended };
 }
 
@@ -102,7 +108,7 @@ export function computeDailyPoolPacing(
   totalCycleDays: number,
 ): PoolDayPace[] {
   return daily.map((used, index) => {
-    const cumBefore = index > 0 ? cumulative[index - 1] : 0;
+    const cumBefore = index > 0 ? (cumulative[index - 1] ?? 0) : 0;
     const remaining = Math.max(100 - cumBefore, 0);
     const daysLeft = Math.max(totalCycleDays - index, 1);
     const allowance = remaining / daysLeft;
@@ -132,17 +138,25 @@ export function buildPoolUsageSeries(
     const idx = dayIndex.get(day);
     if (idx === undefined) continue;
     if (isAutoPoolEvent(event)) {
-      autoCostByDay[idx] += cost;
+      autoCostByDay[idx] = (autoCostByDay[idx] ?? 0) + cost;
     } else {
-      apiCostByDay[idx] += cost;
+      apiCostByDay[idx] = (apiCostByDay[idx] ?? 0) + cost;
     }
   }
 
   const totalAutoCost = autoCostByDay.reduce((sum, value) => sum + value, 0);
   const totalApiCost = apiCostByDay.reduce((sum, value) => sum + value, 0);
 
-  const autoScale = totalAutoCost > 0 ? poolUsage.autoPercentUsed / totalAutoCost : 0;
-  const apiScale = totalApiCost > 0 ? poolUsage.apiPercentUsed / totalApiCost : 0;
+  // When included spend events are missing but live % exists, assume even daily shape.
+  const autoWeights =
+    totalAutoCost > 0 ? autoCostByDay : autoCostByDay.map(() => (poolUsage.autoPercentUsed > 0 ? 1 : 0));
+  const apiWeights =
+    totalApiCost > 0 ? apiCostByDay : apiCostByDay.map(() => (poolUsage.apiPercentUsed > 0 ? 1 : 0));
+  const totalAutoWeight = autoWeights.reduce((sum, value) => sum + value, 0);
+  const totalApiWeight = apiWeights.reduce((sum, value) => sum + value, 0);
+
+  const autoScale = totalAutoWeight > 0 ? poolUsage.autoPercentUsed / totalAutoWeight : 0;
+  const apiScale = totalApiWeight > 0 ? poolUsage.apiPercentUsed / totalApiWeight : 0;
 
   let cumAuto = 0;
   let cumApi = 0;
@@ -152,8 +166,8 @@ export function buildPoolUsageSeries(
   const dailyApiPercent: number[] = [];
 
   for (let i = 0; i < days.length; i++) {
-    const dayAuto = autoCostByDay[i] * autoScale;
-    const dayApi = apiCostByDay[i] * apiScale;
+    const dayAuto = (autoWeights[i] ?? 0) * autoScale;
+    const dayApi = (apiWeights[i] ?? 0) * apiScale;
     cumAuto += dayAuto;
     cumApi += dayApi;
     dailyAutoPercent.push(dayAuto);
@@ -176,8 +190,8 @@ export function buildPoolUsageSeries(
     dailyApiPercent,
     dailyAutoPace,
     dailyApiPace,
-    todayAutoPace: lastIndex >= 0 ? dailyAutoPace[lastIndex] : null,
-    todayApiPace: lastIndex >= 0 ? dailyApiPace[lastIndex] : null,
+    todayAutoPace: lastIndex >= 0 ? (dailyAutoPace[lastIndex] ?? null) : null,
+    todayApiPace: lastIndex >= 0 ? (dailyApiPace[lastIndex] ?? null) : null,
   };
 }
 

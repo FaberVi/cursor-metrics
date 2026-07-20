@@ -5,3 +5,7 @@
 @import "./dashboard-events.css";
 @import "./dashboard-pricing.css";
 @import "./dashboard-modal.css";
+
+html.screenshot-preview body {
+  padding: 16px;
+}

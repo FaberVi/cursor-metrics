@@ -32,8 +32,8 @@ export function formatStatusBarUsageText(
   }
 
   if (data.poolUsage) {
-    parts.push(`${formatPercent(data.poolUsage.autoPercentUsed)}% Auto`);
-    parts.push(`${formatPercent(data.poolUsage.apiPercentUsed)}% API`);
+    parts.push(`${formatPercent(data.poolUsage.autoPercentUsed)}% ${t(locale, "poolFirstParty")}`);
+    parts.push(`${formatPercent(data.poolUsage.apiPercentUsed)}% ${t(locale, "poolApi")}`);
   }
 
   if (opts.onDemandVisible) {
@@ -56,11 +56,11 @@ export function buildPoolUsageMarkdown(
     `  <tr><td colspan="2"><sub>${t(locale, "includedPool")}</sub></td></tr>`,
     `  <tr><td colspan="2"><strong>${tf(locale, "totalUsed", { pct: formatPercent(poolUsage.totalPercentUsed) })}</strong></td></tr>`,
     `  <tr>`,
-    `    <td width="18%"><sub>Auto</sub></td>`,
+    `    <td width="18%"><sub>${t(locale, "poolFirstParty")}</sub></td>`,
     `    <td><sub>${formatPercent(poolUsage.autoPercentUsed)}%</sub> ${renderProgressBar.html(autoRatio)}</td>`,
     `  </tr>`,
     `  <tr>`,
-    `    <td><sub>API</sub></td>`,
+    `    <td><sub>${t(locale, "poolApi")}</sub></td>`,
     `    <td><sub>${formatPercent(poolUsage.apiPercentUsed)}%</sub> ${renderProgressBar.html(apiRatio)}</td>`,
     `  </tr>`,
     `</table>`,
@@ -77,7 +77,10 @@ export function buildPoolTodayPaceMarkdown(
   if (!autoPace && !apiPace) return "";
 
   const rows: string[] = [];
-  for (const [label, pace] of [["Auto", autoPace], ["API", apiPace]] as const) {
+  for (const [label, pace] of [
+    [t(locale, "poolFirstParty"), autoPace],
+    [t(locale, "poolApi"), apiPace],
+  ] as const) {
     if (!pace) continue;
     const usedRatio = pace.allowance > 0 ? Math.min(pace.used / pace.allowance, 1) : 0;
     rows.push(

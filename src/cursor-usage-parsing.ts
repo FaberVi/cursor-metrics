@@ -7,6 +7,7 @@ import type {
 } from "./cursor-api-types";
 import { asRecord, getBillingCycleCutoff, nextMonth, parseTimestamp, toNumber } from "./cursor-api-utils";
 import { getCachedMaxRequestUsage } from "./cursor-setup-cache";
+import type { OnDemandUsage } from "./on-demand-types";
 
 function extractBucketTotals(bucket: Record<string, unknown>, source: string): RequestTotals | null {
   const used =
@@ -297,7 +298,7 @@ export function enrichUsageFromEvents(
   for (const event of events) {
     if (event.timestamp < cutoff) continue;
     if (event.kind === "Included") {
-      includedUsed += event.requests;
+      includedUsed += eventRequestCount(event);
     } else if (event.kind === "On-Demand") {
       onDemandSpendCents += event.spendCents;
     }
@@ -339,6 +340,81 @@ function parseEventKind(kind: string): string {
   return "Included";
 }
 
+/** Whether this row is billed by tokens (vs legacy request-metered plans). */
+export function isTokenMeteredUsageEvent(
+  event: Pick<
+    UsageEvent,
+    | "isTokenBasedCall"
+    | "inputTokens"
+    | "outputTokens"
+    | "cacheWriteTokens"
+    | "cacheReadTokens"
+    | "totalTokens"
+    | "requests"
+  >,
+): boolean {
+  if (event.isTokenBasedCall) return true;
+
+  const breakdown =
+    (event.inputTokens ?? 0) +
+    (event.outputTokens ?? 0) +
+    (event.cacheWriteTokens ?? 0) +
+    (event.cacheReadTokens ?? 0);
+  if (breakdown > 0) return true;
+
+  const totalTokens = event.totalTokens ?? 0;
+  const stored = event.requests ?? 0;
+  // Archived rows sometimes stored token totals in `requests`.
+  if (totalTokens > 1000 && stored >= totalTokens * 0.5) return true;
+
+  return false;
+}
+
+/** Request count for charts/tables — not the same as API `requestsCosts` on token-metered events. */
+export function eventRequestCount(
+  event: Pick<
+    UsageEvent,
+    | "requests"
+    | "isTokenBasedCall"
+    | "kind"
+    | "inputTokens"
+    | "outputTokens"
+    | "cacheWriteTokens"
+    | "cacheReadTokens"
+    | "totalTokens"
+  >,
+): number {
+  if (isTokenMeteredUsageEvent(event)) {
+    return 1;
+  }
+
+  const stored = event.requests ?? 0;
+  if (!Number.isFinite(stored) || stored <= 0) return 1;
+  if (stored > 1000) return 1;
+  return stored;
+}
+
+/** Normalize stored requests on events loaded from archive/API. */
+export function normalizeUsageEventRequests(event: UsageEvent): UsageEvent {
+  const requests = eventRequestCount(event);
+  if (requests === event.requests) return event;
+  return { ...event, requests };
+}
+
+export function parseEventRequests(
+  raw: Record<string, unknown>,
+  kind: string,
+  isTokenBasedCall: boolean,
+): number {
+  const numRequests = toNumber(raw.numRequests);
+  if (numRequests !== null) return numRequests;
+  const requestsCosts = toNumber(raw.requestsCosts);
+  if (isTokenBasedCall && parseEventKind(kind) === "Included") {
+    return 1;
+  }
+  return requestsCosts ?? 1;
+}
+
 export function parseUsageEvent(raw: unknown): UsageEvent | null {
   const e = asRecord(raw);
   if (!e) return null;
@@ -349,13 +425,15 @@ export function parseUsageEvent(raw: unknown): UsageEvent | null {
   const cacheWriteTokens = toNumber(tok.cacheWriteTokens) ?? 0;
   const cacheReadTokens = toNumber(tok.cacheReadTokens) ?? 0;
   const totalTokens = inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens;
+  const kind = parseEventKind(typeof e.kind === "string" ? e.kind : "");
+  const isTokenBasedCall = Boolean(e.isTokenBasedCall);
 
-  return {
+  const event: UsageEvent = {
     timestamp: parseTimestamp(e.timestamp),
     model: typeof e.model === "string" ? e.model : "unknown",
-    kind: parseEventKind(typeof e.kind === "string" ? e.kind : ""),
+    kind,
     totalTokens,
-    requests: toNumber(e.requestsCosts) ?? toNumber(e.numRequests) ?? 1,
+    requests: parseEventRequests(e, typeof e.kind === "string" ? e.kind : "", isTokenBasedCall),
     spendCents: toNumber(e.chargedCents) ?? 0,
     maxMode: Boolean(e.maxMode),
     inputTokens,
@@ -364,7 +442,7 @@ export function parseUsageEvent(raw: unknown): UsageEvent | null {
     cacheReadTokens,
     tokenCostCents: toNumber(tok.totalCents) ?? 0,
     cursorTokenFee: toNumber(e.cursorTokenFee) ?? 0,
-    isTokenBasedCall: Boolean(e.isTokenBasedCall),
+    isTokenBasedCall,
     isHeadless: Boolean(e.isHeadless),
     isChargeable: e.isChargeable !== false,
     conversationId:
@@ -374,6 +452,8 @@ export function parseUsageEvent(raw: unknown): UsageEvent | null {
         ? e.conversationId.trim()
         : null,
   };
+
+  return normalizeUsageEventRequests(event);
 }
 
 export { parseTimestamp } from "./cursor-api-utils";

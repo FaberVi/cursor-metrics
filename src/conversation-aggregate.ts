@@ -1,4 +1,5 @@
 import type { ConversationRow, UsageEvent } from "./cursor-api-types";
+import { eventRequestCount } from "./cursor-usage-parsing";
 import { formatModelLabel } from "./model-labels";
 
 const NO_CONVERSATION_KEY = "__none__";
@@ -72,7 +73,7 @@ export function aggregateConversations(
       firstTimestamp,
       lastTimestamp,
       totalTokens: bucket.reduce((sum, e) => sum + (e.totalTokens || 0), 0),
-      requests: bucket.reduce((sum, e) => sum + (e.requests || 0), 0),
+      requests: bucket.reduce((sum, e) => sum + eventRequestCount(e), 0),
       spendCents: bucket.reduce((sum, e) => sum + eventBillableSpendCents(e, quotaAware), 0),
       eventCount: bucket.length,
       models,

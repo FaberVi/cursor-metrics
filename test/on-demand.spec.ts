@@ -7,12 +7,59 @@ import {
   formatOnDemandValue,
   getOnDemandBarScaleDollars,
   getOnDemandProgressSegments,
+  isOnDemandVisible,
   mergeOnDemandUsage,
   resolveMemberLimitDollars,
   inferOnDemandDisabledFromSpendLimit,
   resolveOnDemandEnabled,
   resolveOnDemandFromUsageSummary,
 } from "../src/on-demand";
+
+describe("isOnDemandVisible", () => {
+  it("hides credit when on-demand is disabled even if state is limited", () => {
+    expect(
+      isOnDemandVisible({
+        state: "limited",
+        onDemandEnabled: false,
+        spendDollars: 0,
+        limitDollars: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("hides credit when state is disabled", () => {
+    expect(
+      isOnDemandVisible({
+        state: "disabled",
+        onDemandEnabled: false,
+        spendDollars: 0,
+        limitDollars: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("shows credit when on-demand is enabled and limited", () => {
+    expect(
+      isOnDemandVisible({
+        state: "limited",
+        onDemandEnabled: true,
+        spendDollars: 10,
+        limitDollars: 50,
+      }),
+    ).toBe(true);
+  });
+
+  it("shows credit when on-demand is unlimited", () => {
+    expect(
+      isOnDemandVisible({
+        state: "unlimited",
+        onDemandEnabled: true,
+        spendDollars: 5,
+        limitDollars: null,
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("buildOnDemandFromSpendLimit", () => {
   it("returns a zero-cap limited state when on-demand is off and there is no spend", () => {
@@ -392,6 +439,7 @@ describe("getOnDemandProgressSegments", () => {
   it("uses spend shares for unlimited team pools", () => {
     const segments = getOnDemandProgressSegments({
       state: "unlimited",
+      onDemandEnabled: true,
       spendDollars: 25,
       limitDollars: null,
       breakdown: {
@@ -412,6 +460,7 @@ describe("getOnDemandProgressSegments", () => {
   it("uses spend shares when the limit is zero", () => {
     const segments = getOnDemandProgressSegments({
       state: "limited",
+      onDemandEnabled: true,
       spendDollars: 50,
       limitDollars: 0,
       breakdown: {
@@ -432,6 +481,7 @@ describe("getOnDemandProgressSegments", () => {
   it("returns separate segments for you and team usage", () => {
     const segments = getOnDemandProgressSegments({
       state: "limited",
+      onDemandEnabled: true,
       spendDollars: 25,
       limitDollars: 500,
       breakdown: {

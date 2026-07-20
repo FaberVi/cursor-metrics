@@ -105,6 +105,10 @@
   height: 8px;
   border-radius: 50%;
 }
+.token-dot-input { background: #9ec5fe; }
+.token-dot-cache-write { background: #f7c5a0; }
+.token-dot-cache-read { background: #d3b9f2; }
+.token-dot-output { background: #b6e3c1; }
 .token-row .count {
   font-variant-numeric: tabular-nums;
   color: var(--muted);

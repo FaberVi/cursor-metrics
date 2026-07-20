@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { UsagePayload } from "../src/cursor-api";
 import { formatModelLabel } from "../src/model-labels";
 import { buildPoolUsageMarkdown, formatStatusBarUsageText } from "../src/pool-usage";
 
@@ -7,13 +8,15 @@ describe("formatModelLabel", () => {
     expect(formatModelLabel("default")).toBe("Auto");
   });
 
-  it("leaves other model names unchanged", () => {
-    expect(formatModelLabel("gpt-5.5-high")).toBe("gpt-5.5-high");
+  it("resolves effort-tier slugs to catalog display names", () => {
+    expect(formatModelLabel("gpt-5.5-high")).toBe("GPT-5.5");
+    expect(formatModelLabel("claude-4-sonnet-thinking-high")).toBe("Claude 4 Sonnet");
+    expect(formatModelLabel("composer-2.5-fast")).toBe("Composer 2.5");
   });
 });
 
 describe("buildPoolUsageMarkdown", () => {
-  it("renders Auto and API pool bars", () => {
+  it("renders First-party models and API pool bars", () => {
     const markdown = buildPoolUsageMarkdown(
       { autoPercentUsed: 46.1, apiPercentUsed: 3.7, totalPercentUsed: 30.8 },
       { html: (ratio) => `<bar:${ratio.toFixed(2)}>` },
@@ -21,7 +24,7 @@ describe("buildPoolUsageMarkdown", () => {
     );
 
     expect(markdown).toContain("30.8% total used");
-    expect(markdown).toContain("Auto");
+    expect(markdown).toContain("First-party models");
     expect(markdown).toContain("46.1%");
     expect(markdown).toContain("API");
     expect(markdown).toContain("3.7%");
@@ -31,21 +34,21 @@ describe("buildPoolUsageMarkdown", () => {
 });
 
 describe("formatStatusBarUsageText", () => {
-  const base = {
+  const base: Pick<UsagePayload, "includedRequests" | "onDemand" | "poolUsage"> = {
     includedRequests: { used: 2000, limit: 2000 },
-    onDemand: { state: "limited" as const, spendDollars: 0, limitDollars: 50 },
+    onDemand: { state: "limited", onDemandEnabled: true, spendDollars: 0, limitDollars: 50 },
     poolUsage: { autoPercentUsed: 33, apiPercentUsed: 12, totalPercentUsed: 31 },
   };
 
-  it("includes Auto and API percentages after requests", () => {
+  it("includes First-party models and API percentages after requests", () => {
     expect(formatStatusBarUsageText(base, { onDemandVisible: true })).toBe(
-      "2000/2000, 33% Auto, 12% API, $0.00/$50.00",
+      "2000/2000, 33% First-party models, 12% API, $0.00/$50.00",
     );
   });
 
   it("omits legacy request counter when showPremiumRequests is false", () => {
     expect(formatStatusBarUsageText(base, { onDemandVisible: true, showPremiumRequests: false })).toBe(
-      "33% Auto, 12% API, $0.00/$50.00",
+      "33% First-party models, 12% API, $0.00/$50.00",
     );
   });
 
@@ -57,7 +60,7 @@ describe("formatStatusBarUsageText", () => {
 
   it("omits on-demand when not visible", () => {
     expect(formatStatusBarUsageText(base, { onDemandVisible: false })).toBe(
-      "2000/2000, 33% Auto, 12% API",
+      "2000/2000, 33% First-party models, 12% API",
     );
   });
 
@@ -66,10 +69,10 @@ describe("formatStatusBarUsageText", () => {
       formatStatusBarUsageText(
         {
           ...base,
-          onDemand: { state: "limited", spendDollars: 10, limitDollars: 50 },
+          onDemand: { state: "limited", onDemandEnabled: true, spendDollars: 10, limitDollars: 50 },
         },
         { onDemandVisible: true, currency: "eur", locale: "en" },
       ),
-    ).toBe("2000/2000, 33% Auto, 12% API, €9.20/€46.00");
+    ).toBe("2000/2000, 33% First-party models, 12% API, €9.20/€46.00");
   });
 });

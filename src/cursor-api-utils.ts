@@ -21,8 +21,8 @@ export function toNumber(value: unknown): number | null {
 
 export function nextMonth(iso: string): string {
   const d = new Date(iso);
-  d.setMonth(d.getMonth() + 1);
-  return d.toISOString();
+  if (Number.isNaN(d.getTime())) return iso;
+  return shiftUtcMonth(d.getTime(), 1);
 }
 
 export function parseTimestamp(value: unknown): number {
@@ -38,10 +38,28 @@ export function parseTimestamp(value: unknown): number {
   return 0;
 }
 
+/** UTC month shift with day clamped to the target month length (avoids Jan 31 → Mar 3). */
+export function shiftUtcMonth(timestampMs: number, deltaMonths: number): string {
+  const date = new Date(timestampMs);
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + deltaMonths;
+  const day = date.getUTCDate();
+  const hours = date.getUTCHours();
+  const minutes = date.getUTCMinutes();
+  const seconds = date.getUTCSeconds();
+  const ms = date.getUTCMilliseconds();
+
+  const targetYear = year + Math.floor(month / 12);
+  const targetMonth = ((month % 12) + 12) % 12;
+  const daysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const clampedDay = Math.min(day, daysInTargetMonth);
+
+  return new Date(Date.UTC(targetYear, targetMonth, clampedDay, hours, minutes, seconds, ms)).toISOString();
+}
+
 export function getBillingCycleCutoff(resetAtIso: string | null, now: number): number {
   if (!resetAtIso) return now - 31 * 86_400_000;
   const resetAt = new Date(resetAtIso);
   if (Number.isNaN(resetAt.getTime())) return now - 31 * 86_400_000;
-  resetAt.setMonth(resetAt.getMonth() - 1);
-  return resetAt.getTime();
+  return new Date(shiftUtcMonth(resetAt.getTime(), -1)).getTime();
 }

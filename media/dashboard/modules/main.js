@@ -51,7 +51,6 @@ function applyUiPreferences(prefs) {
   if (!prefs || typeof prefs !== "object") return;
   if (prefs.range) local.range = prefs.range;
   if (prefs.usageFilter) local.usageFilter = prefs.usageFilter;
-  if (prefs.metric) local.metric = prefs.metric;
   if (Array.isArray(prefs.pricingPinnedIds)) {
     local.pricingPinnedIds = prefs.pricingPinnedIds.filter((id) => typeof id === "string" && id.length > 0);
   }
@@ -63,6 +62,7 @@ function rerenderActiveMainTab() {
   const tab = local.mainTab;
   if (tab === "usage") {
     renderChart();
+    requestAnimationFrame(() => refs.chart?.resize());
   } else if (tab === "pools") {
     renderPoolChart();
   }
@@ -79,8 +79,7 @@ function renderAll() {
   applySectionState();
   applyMainTab();
   setActiveRangeButton();
-  ui.usageFilter.value = local.usageFilter;
-  ui.metricFilter.value = local.metric;
+  if (ui.usageFilter) ui.usageFilter.value = local.usageFilter;
   applyTeamMemberConstraints();
   renderSummaryCards();
   renderBreakdown();
@@ -105,7 +104,7 @@ ui.rangeSelector.addEventListener("click", (e) => {
   renderAll();
 });
 
-ui.usageFilter.addEventListener("change", () => {
+ui.usageFilter?.addEventListener("change", () => {
   local.usageFilter = ui.usageFilter.value;
   resetEventsPage();
   persistLocal();
@@ -115,13 +114,6 @@ ui.usageFilter.addEventListener("change", () => {
   renderBreakdown();
   renderPricing();
   renderTable();
-});
-
-ui.metricFilter.addEventListener("change", () => {
-  local.metric = ui.metricFilter.value;
-  persistLocal();
-  persistGlobalUi({ metric: local.metric });
-  renderChart();
 });
 
 ui.tableHead.addEventListener("click", (e) => {

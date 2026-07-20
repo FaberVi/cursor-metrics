@@ -2,6 +2,7 @@ import type { OnDemandUsage, ProgressSegment } from "./on-demand-types";
 import { getOnDemandTotalSpend } from "./on-demand-build";
 
 export function isOnDemandVisible(onDemand: OnDemandUsage): boolean {
+  if (onDemand.onDemandEnabled === false) return false;
   return onDemand.state !== "disabled";
 }
 

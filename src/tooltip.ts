@@ -7,6 +7,7 @@ import {
   formatOnDemandBreakdownFooter,
   getOnDemandProgressSegments,
   getOnDemandRatio,
+  isOnDemandVisible,
   type OnDemandUsage,
 } from "./on-demand";
 import { buildPoolTodayPaceMarkdown, buildPoolUsageMarkdown } from "./pool-usage";
@@ -95,7 +96,7 @@ function buildSummaryColumns(
     });
   }
 
-  if (onDemand.state === "disabled") {
+  if (!isOnDemandVisible(onDemand)) {
     return columns;
   }
 
@@ -119,8 +120,12 @@ function buildSummaryColumns(
   return columns;
 }
 
+export type UsageOverviewData = Pick<UsagePayload, "includedRequests" | "onDemand" | "poolUsage"> & {
+  resetsAt?: string | null;
+};
+
 export function buildUsageOverviewMarkdown(
-  data: Pick<UsagePayload, "includedRequests" | "onDemand" | "poolUsage" | "resetsAt">,
+  data: UsageOverviewData,
   renderProgressBar: ProgressBarRenderer,
   locale: DashboardLocale,
   now = Date.now(),
@@ -128,7 +133,7 @@ export function buildUsageOverviewMarkdown(
   currency: DashboardCurrency = "usd",
   showPremiumRequests = true,
 ): string {
-  const { includedRequests, onDemand, poolUsage, resetsAt } = data;
+  const { includedRequests, onDemand, poolUsage, resetsAt = null } = data;
   const summaryColumns = buildSummaryColumns(
     includedRequests,
     onDemand,

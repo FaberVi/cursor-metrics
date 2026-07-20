@@ -1,6 +1,7 @@
 import type { DailySpendRow, UsageEvent, UsagePayload } from "./cursor-api";
 import { CARD_HELP } from "./card-help";
 import { getDurationCutoff, type UsageDuration } from "./model-breakdown";
+import { eventRequestCount } from "./cursor-usage-parsing";
 import {
   aggregateTheoreticalByModel,
   getModelPricingCatalog,
@@ -90,9 +91,12 @@ export function buildDashboardState(
   quotaAwareEventDisplay = true,
   conversationTitles: Record<string, string> = {},
   storedEventCount = 0,
+  /** Full event history for pool pacing (must not follow the Usage chart range filter). */
+  poolEvents?: UsageEvent[],
 ): DashboardState {
   const poolUsage = data?.poolUsage ?? null;
   const resetsAt = data?.resetsAt ?? null;
+  const eventsForPool = poolEvents ?? events;
   const showPremiumRequests = shouldShowPremiumRequestsQuota(
     data?.planInfo ?? null,
     poolUsage,
@@ -110,6 +114,7 @@ export function buildDashboardState(
     {
       applyCursorTokenRate: isTeamPlan,
       cursorTokenRatePerMillion: catalog.cursorTokenRatePerMillion,
+      quotaAwareEventDisplay,
     },
   );
 
@@ -122,7 +127,7 @@ export function buildDashboardState(
     isTeamMember,
     showPremiumRequests,
     quotaAwareEventDisplay,
-    poolUsageSeries: poolUsage ? buildPoolUsageSeries(events, poolUsage, resetsAt, now) : null,
+    poolUsageSeries: poolUsage ? buildPoolUsageSeries(eventsForPool, poolUsage, resetsAt, now) : null,
     poolDepletion: poolUsage ? projectPoolDepletion(poolUsage, resetsAt, now) : null,
     poolRecommended: poolUsage ? computeRecommendedPoolUsage(resetsAt, now) : null,
     modelPricing: {
@@ -176,7 +181,7 @@ function formatDayLabel(dayMs: number): string {
 
 function eventValue(event: UsageEvent, metric: ChartMetric, quotaAwareEventDisplay: boolean): number {
   if (metric === "tokens") return event.totalTokens;
-  if (metric === "requests") return event.requests;
+  if (metric === "requests") return eventRequestCount(event);
   return billableSpendCents(event, quotaAwareEventDisplay) / 100;
 }
 
@@ -255,7 +260,7 @@ export function summarizeRange(
   for (const event of events) {
     if (event.timestamp < cutoff) continue;
     totalTokens += event.totalTokens;
-    if (isIncluded(event)) includedRequests += event.requests;
+    if (isIncluded(event)) includedRequests += eventRequestCount(event);
     onDemandSpendCents += billableSpendCents(event, true);
   }
 

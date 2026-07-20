@@ -8,7 +8,6 @@ export function usageEventFingerprint(event: UsageEvent): string {
     kind: event.kind,
     conversationId: event.conversationId ?? "",
     totalTokens: event.totalTokens,
-    requests: event.requests,
     spendCents: event.spendCents,
     inputTokens: event.inputTokens,
     outputTokens: event.outputTokens,

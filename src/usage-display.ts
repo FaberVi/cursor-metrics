@@ -3,7 +3,7 @@ import type { UsagePayload } from "./cursor-api-types";
 
 /**
  * Legacy request counters (used/limit) apply only to old personal plans without pool data.
- * Current Cursor billing (personal and team) uses separate First-party and API pools.
+ * Current Cursor billing (personal and team) uses separate First-party models and API pools.
  */
 export function shouldShowPremiumRequestsQuota(
   planInfo: PlanInfo | null,

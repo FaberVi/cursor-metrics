@@ -1,25 +1,26 @@
 {
   "name": "cursor-usage",
-  "version": "0.7.1",
+  "displayName": "Cursor Usage (Community)",
+  "description": "Shows your Cursor IDE usage (included requests and on-demand spend) in the status bar",
+  "version": "0.8.0",
+  "publisher": "fabervi",
+  "license": "MIT",
+  "private": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/FaberVi/cursor-metrics"
   },
-  "main": "./dist/extension.js",
-  "devDependencies": {
-    "@types/node": "^25.3.0",
-    "@types/vscode": "^1.85.0",
-    "esbuild": "^0.25.0",
-    "playwright": "^1.52.0",
-    "puppeteer": "^25.3.0",
-    "typescript": "^5.7.0"
+  "engines": {
+    "vscode": "^1.85.0"
   },
-  "activationEvents": [
-    "onStartupFinished"
-  ],
   "categories": [
     "Other"
   ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "icon": "icon.png",
   "contributes": {
     "commands": [
       {
@@ -128,14 +129,6 @@
       }
     }
   },
-  "description": "Shows your Cursor IDE usage (included requests and on-demand spend) in the status bar",
-  "displayName": "Cursor Usage (Community)",
-  "engines": {
-    "vscode": "^1.85.0"
-  },
-  "icon": "icon.png",
-  "license": "MIT",
-  "publisher": "fabervi",
   "scripts": {
     "build": "bun scripts/download-chart.mjs && bun esbuild.config.mjs --production",
     "watch": "bun esbuild.config.mjs --watch",
@@ -149,5 +142,13 @@
   },
   "dependencies": {
     "sql.js": "^1.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0",
+    "playwright": "^1.52.0",
+    "puppeteer": "^25.3.0",
+    "typescript": "^5.7.0"
   }
 }

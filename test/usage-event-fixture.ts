@@ -1,6 +1,7 @@
 import type { UsageEvent } from "../src/cursor-api";
 
 const baseUsageEvent = {
+  requests: 1,
   spendCents: 0,
   maxMode: false,
   inputTokens: 0,
@@ -13,11 +14,11 @@ const baseUsageEvent = {
   isHeadless: false,
   isChargeable: true,
   conversationId: null,
-} satisfies Omit<UsageEvent, "timestamp" | "model" | "kind" | "totalTokens" | "requests">;
+} satisfies Omit<UsageEvent, "timestamp" | "model" | "kind" | "totalTokens">;
 
 export function usageEvent(
-  partial: Pick<UsageEvent, "timestamp" | "model" | "kind" | "totalTokens" | "requests"> &
-    Partial<Omit<UsageEvent, "timestamp" | "model" | "kind" | "totalTokens" | "requests">>,
+  partial: Pick<UsageEvent, "timestamp" | "model" | "kind" | "totalTokens"> &
+    Partial<Omit<UsageEvent, "timestamp" | "model" | "kind" | "totalTokens">>,
 ): UsageEvent {
   return { ...baseUsageEvent, ...partial };
 }

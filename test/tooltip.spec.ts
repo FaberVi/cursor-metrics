@@ -1,5 +1,11 @@
+/// <reference path="../types/bun-test.d.ts" />
 import { describe, expect, it } from "bun:test";
-import { buildUsageByModelHeadingMarkdown, buildUsageOverviewMarkdown } from "../src/tooltip";
+import type { UsageEvent } from "../src/cursor-api-types";
+import {
+  buildUsageByModelHeadingMarkdown,
+  buildUsageOverviewMarkdown,
+  type UsageOverviewData,
+} from "../src/tooltip";
 
 const progressBar = {
   markdown: (ratio: number) => `[bar:${ratio.toFixed(2)}]`,
@@ -9,15 +15,12 @@ const progressBar = {
 
 describe("buildUsageOverviewMarkdown", () => {
   it("renders a balanced two-column summary for limited on-demand spend", () => {
-    const markdown = buildUsageOverviewMarkdown(
-      {
-        includedRequests: { used: 500, limit: 500 },
-        onDemand: { state: "limited", spendDollars: 66.89, limitDollars: 200 },
-        poolUsage: null,
-      },
-      progressBar,
-      "en",
-    );
+    const data: UsageOverviewData = {
+      includedRequests: { used: 500, limit: 500 },
+      onDemand: { state: "limited", onDemandEnabled: true, spendDollars: 66.89, limitDollars: 200 },
+      poolUsage: null,
+    };
+    const markdown = buildUsageOverviewMarkdown(data, progressBar, "en");
 
     expect(markdown).toContain("<td><sub>Included</sub></td>");
     expect(markdown).toContain("<td><sub>On-demand</sub></td>");
@@ -35,32 +38,23 @@ describe("buildUsageOverviewMarkdown", () => {
   });
 
   it("renders on-demand amounts in EUR when currency is eur", () => {
-    const markdown = buildUsageOverviewMarkdown(
-      {
-        includedRequests: { used: 500, limit: 500 },
-        onDemand: { state: "limited", spendDollars: 66.89, limitDollars: 200 },
-        poolUsage: null,
-      },
-      progressBar,
-      "en",
-      Date.now(),
-      [],
-      "eur",
-    );
+    const data: UsageOverviewData = {
+      includedRequests: { used: 500, limit: 500 },
+      onDemand: { state: "limited", onDemandEnabled: true, spendDollars: 66.89, limitDollars: 200 },
+      poolUsage: null,
+    };
+    const markdown = buildUsageOverviewMarkdown(data, progressBar, "en", Date.now(), [], "eur");
 
     expect(markdown).toContain("<strong>€61.54 / €184.00</strong>");
   });
 
   it("renders unlimited copy on the bottom row so the columns stay aligned", () => {
-    const markdown = buildUsageOverviewMarkdown(
-      {
-        includedRequests: { used: 500, limit: 500 },
-        onDemand: { state: "unlimited", spendDollars: 66.89, limitDollars: null },
-        poolUsage: null,
-      },
-      progressBar,
-      "en",
-    );
+    const data: UsageOverviewData = {
+      includedRequests: { used: 500, limit: 500 },
+      onDemand: { state: "unlimited", onDemandEnabled: true, spendDollars: 66.89, limitDollars: null },
+      poolUsage: null,
+    };
+    const markdown = buildUsageOverviewMarkdown(data, progressBar, "en");
 
     expect(markdown).toContain("<td><sub>Included</sub></td>");
     expect(markdown).toContain("<td><sub>On-demand</sub></td>");
@@ -78,15 +72,12 @@ describe("buildUsageOverviewMarkdown", () => {
   });
 
   it("renders a single-column balanced summary when on-demand is hidden", () => {
-    const markdown = buildUsageOverviewMarkdown(
-      {
-        includedRequests: { used: 42, limit: 500 },
-        onDemand: { state: "disabled", spendDollars: 0, limitDollars: null },
-        poolUsage: null,
-      },
-      progressBar,
-      "en",
-    );
+    const data: UsageOverviewData = {
+      includedRequests: { used: 42, limit: 500 },
+      onDemand: { state: "disabled", onDemandEnabled: false, spendDollars: 0, limitDollars: null },
+      poolUsage: null,
+    };
+    const markdown = buildUsageOverviewMarkdown(data, progressBar, "en");
 
     expect(markdown).toContain("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">");
     expect(markdown).toContain("<td width=\"100%\"><sub>Included</sub></td>");
@@ -97,42 +88,46 @@ describe("buildUsageOverviewMarkdown", () => {
     expect(markdown).not.toContain("On-demand");
   });
 
-  it("includes pool usage when provided", () => {
-    const markdown = buildUsageOverviewMarkdown(
-      {
-        includedRequests: { used: 500, limit: 500 },
-        onDemand: { state: "disabled", spendDollars: 0, limitDollars: null },
-        poolUsage: { autoPercentUsed: 46, apiPercentUsed: 4, totalPercentUsed: 31 },
+  it("hides on-demand column when usage is limited but on-demand is turned off", () => {
+    const data: UsageOverviewData = {
+      includedRequests: { used: 42, limit: 500 },
+      onDemand: {
+        state: "limited",
+        onDemandEnabled: false,
+        spendDollars: 0,
+        limitDollars: 0,
       },
-      progressBar,
-      "en",
-      Date.now(),
-      [],
-      "usd",
-      false,
-    );
+      poolUsage: null,
+    };
+    const markdown = buildUsageOverviewMarkdown(data, progressBar, "en");
+
+    expect(markdown).not.toContain("On-demand");
+    expect(markdown).not.toContain("$0.00");
+    expect(markdown).toContain("<strong>42 / 500</strong>");
+  });
+
+  it("includes pool usage when provided", () => {
+    const data: UsageOverviewData = {
+      includedRequests: { used: 500, limit: 500 },
+      onDemand: { state: "disabled", onDemandEnabled: false, spendDollars: 0, limitDollars: null },
+      poolUsage: { autoPercentUsed: 46, apiPercentUsed: 4, totalPercentUsed: 31 },
+    };
+    const markdown = buildUsageOverviewMarkdown(data, progressBar, "en", Date.now(), [], "usd", false);
 
     expect(markdown).toContain("Included pool");
     expect(markdown).toContain("31% total used");
-    expect(markdown).toContain("Auto");
+    expect(markdown).toContain("First-party models");
     expect(markdown).toContain("API");
     expect(markdown).not.toContain("500 / 500");
   });
 
   it("omits legacy request column when showPremiumRequests is false", () => {
-    const markdown = buildUsageOverviewMarkdown(
-      {
-        includedRequests: { used: 2000, limit: 2000 },
-        onDemand: { state: "limited", spendDollars: 12.5, limitDollars: 100 },
-        poolUsage: { autoPercentUsed: 61, apiPercentUsed: 100, totalPercentUsed: 80 },
-      },
-      progressBar,
-      "en",
-      Date.now(),
-      [],
-      "usd",
-      false,
-    );
+    const data: UsageOverviewData = {
+      includedRequests: { used: 2000, limit: 2000 },
+      onDemand: { state: "limited", onDemandEnabled: true, spendDollars: 12.5, limitDollars: 100 },
+      poolUsage: { autoPercentUsed: 61, apiPercentUsed: 100, totalPercentUsed: 80 },
+    };
+    const markdown = buildUsageOverviewMarkdown(data, progressBar, "en", Date.now(), [], "usd", false);
 
     expect(markdown).not.toContain("2000 / 2000");
     expect(markdown).toContain("On-demand");
@@ -144,7 +139,7 @@ describe("buildUsageOverviewMarkdown", () => {
     const resetsAt = "2026-08-02T15:37:46.000Z";
     const cycleStart = new Date(resetsAt);
     cycleStart.setMonth(cycleStart.getMonth() - 1);
-    const events = [
+    const events: UsageEvent[] = [
       {
         timestamp: cycleStart.getTime() + 3_600_000,
         model: "default",
@@ -162,6 +157,7 @@ describe("buildUsageOverviewMarkdown", () => {
         isTokenBasedCall: false,
         isHeadless: false,
         isChargeable: true,
+        conversationId: null,
       },
       {
         timestamp: now - 3_600_000,
@@ -180,23 +176,17 @@ describe("buildUsageOverviewMarkdown", () => {
         isTokenBasedCall: false,
         isHeadless: false,
         isChargeable: true,
+        conversationId: null,
       },
     ];
 
-    const markdown = buildUsageOverviewMarkdown(
-      {
-        includedRequests: { used: 500, limit: 500 },
-        onDemand: { state: "disabled", spendDollars: 0, limitDollars: null },
-        poolUsage: { autoPercentUsed: 61.4, apiPercentUsed: 3.7, totalPercentUsed: 40.4 },
-        resetsAt,
-      },
-      progressBar,
-      "en",
-      now,
-      events,
-      "usd",
-      false,
-    );
+    const data: UsageOverviewData = {
+      includedRequests: { used: 500, limit: 500 },
+      onDemand: { state: "disabled", onDemandEnabled: false, spendDollars: 0, limitDollars: null },
+      poolUsage: { autoPercentUsed: 61.4, apiPercentUsed: 3.7, totalPercentUsed: 40.4 },
+      resetsAt,
+    };
+    const markdown = buildUsageOverviewMarkdown(data, progressBar, "en", now, events, "usd", false);
 
     expect(markdown).toContain("Daily budget");
     expect(markdown).toContain("budget");
@@ -215,15 +205,12 @@ describe("buildUsageByModelHeadingMarkdown", () => {
   });
 
   it("renders Italian labels when locale is it", () => {
-    const markdown = buildUsageOverviewMarkdown(
-      {
-        includedRequests: { used: 42, limit: 500 },
-        onDemand: { state: "disabled", spendDollars: 0, limitDollars: null },
-        poolUsage: null,
-      },
-      progressBar,
-      "it",
-    );
+    const data: UsageOverviewData = {
+      includedRequests: { used: 42, limit: 500 },
+      onDemand: { state: "disabled", onDemandEnabled: false, spendDollars: 0, limitDollars: null },
+      poolUsage: null,
+    };
+    const markdown = buildUsageOverviewMarkdown(data, progressBar, "it");
 
     expect(markdown).toContain("<sub>Incluso</sub>");
     expect(markdown).not.toContain("<sub>Included</sub>");

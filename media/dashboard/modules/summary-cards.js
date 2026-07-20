@@ -36,7 +36,7 @@ export function renderBillingCycleCard(resetAtIso) {
   const meta = getBillingCycleMeta(resetAtIso);
   if (!meta) {
     return (
-      '<div class="card">' +
+      '<div class="card card-billing">' +
         cardLabel(t("billingCycle"), "billingCycle") +
         '<div class="card-value muted">' + escapeHtml(t("billingCycleUnknown")) + "</div>" +
       "</div>"
@@ -53,7 +53,7 @@ export function renderBillingCycleCard(resetAtIso) {
     : "Resets " + resetFormatted + " · " + formatPercent(meta.pct) + "% " + t("cycleElapsed");
 
   return (
-    '<div class="card">' +
+    '<div class="card card-billing">' +
       cardLabel(t("billingCycle"), "billingCycle") +
       '<div class="card-value">' + escapeHtml(formatBillingCycleValue(meta.daysLeft)) +
         '<span class="card-value-sub muted"> ' + escapeHtml(t("billingCycleUntilReset")) + "</span></div>" +

@@ -75,7 +75,7 @@ All pool pacing views are **indicative** — they assume an even spread of the 1
 | **Projected 100%** | When each pool would hit 100% if the average daily rate since cycle start continues. |
 | **Chart tooltip pool %** | Auto and API pool percentage consumed on that specific day. |
 
-Daily pool percentages are derived from included usage events (`default` model → Auto pool; other models → API pool) and calibrated against the live totals from Cursor's usage API.
+Daily pool percentages are derived from included usage events (first-party catalog models such as Auto/`default`, Composer 2.5, and Cursor Grok 4.5 → First-party pool; other models → API pool) and calibrated against the live totals from Cursor's usage API.
 
 ## Privacy and behavior
 
@@ -143,13 +143,13 @@ Install a VSIX locally for smoke testing:
 
 ```bash
 # Cursor
-cursor --install-extension build/cursor-usage-0.7.1.vsix
+cursor --install-extension build/cursor-usage-0.8.0.vsix
 
 # VS Code
-code --install-extension build/cursor-usage-0.7.1.vsix
+code --install-extension build/cursor-usage-0.8.0.vsix
 ```
 
-Replace `0.7.1` with the version from `package.json`.
+Replace `0.8.0` with the version from `package.json`.
 
 ### Publish to marketplaces
 

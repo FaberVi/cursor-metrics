@@ -1,10 +1,10 @@
 export const CARD_HELP = {
   includedRequests:
-    "Legacy request quota for older personal plans. Current Cursor plans bill against separate First-party (Auto/Composer) and API model pools instead.",
+    "Legacy request quota for older personal plans. Current Cursor plans bill against separate First-party models and API pools instead.",
   onDemand:
     "Usage billed beyond your included pools when usage-based pricing is enabled. Spend is charged to your payment method; on team accounts an admin may set a hard limit.",
   includedPool:
-    "Share of your included usage pools for the billing cycle. Auto covers Cursor's automatic model routing and first-party models; API covers models you choose explicitly. Total is the combined pool consumption.",
+    "Share of your included usage pools for the billing cycle. First-party models covers Cursor-built models (Auto, Composer, Cursor Grok); API covers models you choose from other providers. Total is the combined pool consumption.",
   poolDepletion:
     "Estimated date each pool reaches 100% based on average daily consumption since the billing cycle started. If usage stays at the same rate, this is when the pool would run out before reset.",
   poolPace:

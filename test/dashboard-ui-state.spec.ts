@@ -1,17 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import type { ExtensionContext, Memento } from "vscode";
+import type { ExtensionContext } from "vscode";
 
 type Store = Record<string, unknown>;
 
 function mockContext(store: Store = {}): ExtensionContext {
-  const globalState: Memento & { update: (k: string, v: unknown) => Promise<void> } = {
+  const globalState = {
     keys: () => Object.keys(store),
-    get: (key, defaultValue) => (key in store ? store[key] : defaultValue),
-    update: async (key, value) => {
+    get: <T>(key: string, defaultValue?: T): T | undefined =>
+      (key in store ? store[key] : defaultValue) as T | undefined,
+    update: async (key: string, value: unknown) => {
       store[key] = value;
     },
   };
-  return { globalState } as ExtensionContext;
+  return { globalState } as unknown as ExtensionContext;
 }
 
 describe("dashboard ui preferences", () => {
@@ -31,7 +32,8 @@ describe("dashboard ui preferences", () => {
     const ctx = mockContext();
 
     await saveDashboardUiPreferences(ctx, {
-      pricingPinnedIds: ["auto", "gpt-5", "auto", "", 42],
+      // Intentionally include invalid entries; load() sanitizes them.
+      pricingPinnedIds: ["auto", "gpt-5", "auto", "", 42] as unknown as string[],
     });
     expect(loadDashboardUiPreferences(ctx)).toEqual({
       pricingPinnedIds: ["auto", "gpt-5"],

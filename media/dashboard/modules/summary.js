@@ -32,7 +32,7 @@ export function renderSummaryCards() {
     );
   }
 
-  if (onDemand.state !== "disabled") {
+  if (onDemand.state !== "disabled" && onDemand.onDemandEnabled !== false) {
     let valText, footerText, progressHtml;
     if (onDemand.state === "unlimited") {
       valText = formatOnDemandValue(onDemand);

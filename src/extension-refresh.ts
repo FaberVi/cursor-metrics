@@ -9,6 +9,7 @@ import {
   type UsagePayload,
   type UsageEvent,
 } from "./cursor-api";
+import { normalizeUsageEventRequests } from "./cursor-usage-parsing";
 import { DashboardPanel, OPEN_DASHBOARD_COMMAND } from "./dashboard-panel";
 import { buildConversationTitleMap } from "./conversation-titles";
 import { CONVERSATION_PREVIEW_KEY } from "./dashboard-locale";
@@ -16,7 +17,7 @@ import { getDashboardLocale } from "./dashboard-locale-state";
 import { getDashboardCurrency } from "./dashboard-currency-state";
 import type { DashboardCurrency, DashboardLocale } from "./dashboard-locale";
 import { isOnDemandVisible } from "./on-demand";
-import { buildDashboardState, filterDashboardEvents, type DashboardState } from "./dashboard-state";
+import { buildDashboardState, type DashboardState } from "./dashboard-state";
 import { MAX_STORE_SYNC_PAGES } from "./cursor-api-utils";
 import { formatResetCountdown, t } from "./i18n";
 import { formatStatusBarUsageText } from "./pool-usage";
@@ -146,16 +147,6 @@ async function loadStoredEvents(): Promise<UsageEvent[]> {
   storedEventCount = store.getEventCount();
   const since = Date.now() - STORE_LOOKBACK_DAYS * 86_400_000;
   return store.getEventsSince(since);
-}
-
-function getDashboardEvents(now = Date.now()): UsageEvent[] {
-  const allEvents = lastEvents ?? [];
-  return filterDashboardEvents(
-    allEvents,
-    DashboardPanel.getDashboardEventFilter(),
-    lastData?.resetsAt ?? null,
-    now,
-  );
 }
 
 function buildStatusBarContext() {
@@ -294,9 +285,13 @@ export async function showDetails(): Promise<void> {
 
 export function getDashboardState(): DashboardState {
   const now = Date.now();
+  const rawEvents = lastEvents ?? [];
+  const allEvents = rawEvents.map(normalizeUsageEventRequests);
+  // Send the full event archive to the webview. Range / usage filters are applied
+  // client-side for charts and tables; pool pacing also needs the unfiltered history.
   return buildDashboardState(
     lastData,
-    getDashboardEvents(now),
+    allEvents,
     lastDailySpend ?? [],
     isTeamMemberCached(),
     lastError,
@@ -304,6 +299,7 @@ export function getDashboardState(): DashboardState {
     getConfig().quotaAwareEventDisplay,
     conversationPreviewEnabled ? conversationTitles : {},
     storedEventCount,
+    allEvents,
   );
 }
 

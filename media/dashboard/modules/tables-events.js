@@ -17,13 +17,14 @@ import {
   formatTokens,
   getDurationCutoff,
   matchesUsageFilter,
+  stateGeneratedAt,
   toMillis,
 } from "./format.js";
 import { t } from "./i18n.js";
 
 export function getSortedEvents() {
   if (!refs.state) return [];
-  const cutoff = getDurationCutoff(local.range, refs.state.resetsAt, refs.state.generatedAt);
+  const cutoff = getDurationCutoff(local.range, refs.state.resetsAt, stateGeneratedAt());
   const events = refs.state.events.filter((e) => {
     const ts = toMillis(e.timestamp);
     return Number.isFinite(ts) && ts >= cutoff && matchesUsageFilter(e, local.usageFilter);

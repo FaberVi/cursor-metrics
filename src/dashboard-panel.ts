@@ -152,8 +152,7 @@ export class DashboardPanel {
         } else if (msg.type === "syncDashboardPrefs") {
           if (isUsageDuration(msg.range)) this.dashboardPrefs.range = msg.range;
           if (isUsageFilter(msg.usageFilter)) this.dashboardPrefs.usageFilter = msg.usageFilter;
-          const state = this.getState();
-          if (state) this.postState(state);
+          // Webview already filters charts/tables locally from the full event list.
         } else if (msg.type === "getConversationMessages" && typeof msg.conversationId === "string") {
           try {
             const conversationEvents = this.getState()?.events.filter(
