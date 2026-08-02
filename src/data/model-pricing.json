@@ -1,8 +1,9 @@
 {
   "sourceUrl": "https://cursor.com/docs/models-and-pricing",
-  "lastUpdated": "2026-07-11",
+  "lastUpdated": "2026-07-28",
   "cursorTokenRatePerMillion": 0.25,
   "plans": [
+    { "id": "start", "name": "Start (India)", "priceMonthly": 649, "apiUsageIncluded": 0 },
     { "id": "pro", "name": "Pro", "priceMonthly": 20, "apiUsageIncluded": 20 },
     { "id": "pro-plus", "name": "Pro Plus", "priceMonthly": 60, "apiUsageIncluded": 70 },
     { "id": "ultra", "name": "Ultra", "priceMonthly": 200, "apiUsageIncluded": 400 }
@@ -226,6 +227,43 @@
       ]
     },
     {
+      "id": "claude-opus-5",
+      "displayName": "Claude Opus 5",
+      "provider": "Anthropic",
+      "pool": "api",
+      "rates": { "input": 5, "cacheWrite": 6.25, "cacheRead": 0.5, "output": 25 },
+      "aliases": ["claude-opus-5"],
+      "variants": [
+        {
+          "id": "thinking",
+          "label": "Thinking",
+          "aliases": [
+            "claude-opus-5-thinking",
+            "claude-opus-5-thinking-max",
+            "claude-opus-5-thinking-high",
+            "claude-opus-5-thinking-xhigh"
+          ],
+          "priceImpact": "sameRateMoreTokens",
+          "requiresMaxMode": true
+        },
+        {
+          "id": "fast",
+          "label": "Fast",
+          "aliases": ["claude-opus-5-fast"],
+          "priceImpact": "sameRateMoreTokens",
+          "requiresMaxMode": true,
+          "description": "Fast mode requires Max Mode on legacy request-based plans"
+        },
+        {
+          "id": "max-long-context",
+          "label": "Max Mode (1M)",
+          "priceImpact": "sameRateMoreTokens",
+          "requiresMaxMode": true,
+          "description": "Same per-token rates up to 1M context"
+        }
+      ]
+    },
+    {
       "id": "claude-sonnet-5",
       "displayName": "Claude Sonnet 5",
       "provider": "Anthropic",
@@ -305,6 +343,23 @@
       "pool": "api",
       "rates": { "input": 1.5, "cacheRead": 0.15, "output": 9 },
       "aliases": ["gemini-3-5-flash"]
+    },
+    {
+      "id": "gemini-3.6-flash",
+      "displayName": "Gemini 3.6 Flash",
+      "provider": "Google",
+      "pool": "api",
+      "rates": { "input": 1.5, "cacheRead": 0.15, "output": 7.5 },
+      "aliases": ["gemini-3-6-flash"],
+      "variants": [
+        {
+          "id": "high",
+          "label": "High",
+          "aliases": ["gemini-3.6-flash-high", "gemini-3-6-flash-high"],
+          "priceImpact": "sameRateMoreTokens",
+          "description": "Same $/M; higher reasoning effort uses more tokens"
+        }
+      ]
     },
     {
       "id": "glm-5.2",
@@ -577,6 +632,16 @@
       "rates": { "input": 0.95, "cacheRead": 0.19, "output": 4 },
       "hidden": true,
       "aliases": ["kimi-k2-7-code"]
+    },
+    {
+      "id": "kimi-k3",
+      "displayName": "Kimi K3",
+      "provider": "Moonshot",
+      "pool": "api",
+      "rates": { "input": 3, "cacheRead": 0.3, "output": 15 },
+      "hidden": true,
+      "aliases": ["kimi-k3"],
+      "notes": "Up to 1M tokens with extended context at the same per-token rates; no separate cache-write fee"
     }
   ]
 }

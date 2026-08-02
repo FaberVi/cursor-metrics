@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { configure } from "./cursor-api";
+import { resolveConfiguredUsageDuration } from "./duration-options";
 import { DashboardPanel, OPEN_DASHBOARD_COMMAND } from "./dashboard-panel";
 import { OPEN_DURATION_SETTING_COMMAND } from "./tooltip";
 import {
@@ -9,6 +10,7 @@ import {
   initExtensionRefresh,
   log,
   refreshOnFocus,
+  refreshPricingCatalog,
   refreshStatusBarFromLastData,
   scheduleRefresh,
   showDetails,
@@ -28,7 +30,26 @@ export function activate(context: vscode.ExtensionContext) {
   log("Extension activating...");
 
   const showDetailsCmd = vscode.commands.registerCommand("cursor-usage.showDetails", showDetails);
-  const refreshCmd = vscode.commands.registerCommand("cursor-usage.refresh", updateUsage);
+  const refreshCmd = vscode.commands.registerCommand("cursor-usage.refresh", () => updateUsage({ force: true }));
+  const refreshPricingCmd = vscode.commands.registerCommand("cursor-usage.refreshPricingCatalog", async () => {
+    try {
+      const result = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Cursor Usage: syncing pricing catalog…",
+          cancellable: false,
+        },
+        () => refreshPricingCatalog(),
+      );
+      void vscode.window.showInformationMessage(
+        `Pricing catalog updated (${result.updated} models refreshed, ${result.added} new).`,
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      log(`Pricing catalog sync failed: ${message}`);
+      void vscode.window.showErrorMessage(`Pricing catalog sync failed: ${message}`);
+    }
+  });
   const openDurationSettingCmd = vscode.commands.registerCommand(
     OPEN_DURATION_SETTING_COMMAND,
     () => vscode.commands.executeCommand("workbench.action.openSettings", "cursorUsage.usageDuration"),
@@ -56,6 +77,15 @@ export function activate(context: vscode.ExtensionContext) {
       refreshStatusBarFromLastData();
       DashboardPanel.currentPanel?.postState(getDashboardState());
     }
+    if (e.affectsConfiguration("cursorUsage.usageDuration")) {
+      const state = getDashboardState();
+      const hasBillingCycle = Boolean(state?.resetsAt);
+      const range = resolveConfiguredUsageDuration(
+        vscode.workspace.getConfiguration("cursorUsage").get("usageDuration"),
+        hasBillingCycle,
+      );
+      DashboardPanel.currentPanel?.postRangePreference(range);
+    }
   });
 
   const docChangeListener = vscode.workspace.onDidChangeTextDocument((e) => {
@@ -74,6 +104,7 @@ export function activate(context: vscode.ExtensionContext) {
     statusBarItem,
     showDetailsCmd,
     refreshCmd,
+    refreshPricingCmd,
     openDurationSettingCmd,
     openDashboardCmd,
     configListener,

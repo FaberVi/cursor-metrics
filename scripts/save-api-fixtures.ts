@@ -74,4 +74,24 @@ await save(
   }),
 );
 
+if (stripe?.teamId) {
+  const periodEndMs = Date.now();
+  const periodStartMs = periodEndMs - 31 * 86_400_000;
+  await save(
+    "daily-spend",
+    await fetch("https://cursor.com/api/dashboard/get-daily-spend-by-category", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        teamId: stripe.teamId,
+        userId: Number(userId),
+        periodStartMs,
+        periodEndMs,
+        groupBy: 1,
+        spendType: 1,
+      }),
+    }),
+  );
+}
+
 console.log(`Fixtures written to ${outDir}`);

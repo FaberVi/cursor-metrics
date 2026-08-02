@@ -9,6 +9,8 @@ export const ui = {
   summaryCards: document.getElementById("summary-cards"),
   rangeSelector: document.getElementById("range-selector"),
   usageFilter: document.getElementById("usage-filter"),
+  chartMetricFilter: document.getElementById("chart-metric-filter"),
+  chartRangeLabel: document.getElementById("chart-range-label"),
   canvas: document.getElementById("usage-chart"),
   chartNote: document.getElementById("chart-note"),
   poolCanvas: document.getElementById("pool-chart"),
@@ -20,10 +22,15 @@ export const ui = {
   breakdownFoot: document.querySelector("#breakdown-table tfoot"),
   breakdownHead: document.querySelector("#breakdown-table thead"),
   breakdownRangeLabel: document.getElementById("breakdown-range-label"),
+  breakdownPoolNote: document.getElementById("breakdown-pool-note"),
   pricingBody: document.querySelector("#pricing-table tbody"),
   pricingHead: document.querySelector("#pricing-table thead"),
   pricingRangeLabel: document.getElementById("pricing-range-label"),
   pricingUpdated: document.getElementById("pricing-updated"),
+  pricingSyncBadge: document.getElementById("pricing-sync-badge"),
+  pricingRefreshBtn: document.getElementById("pricing-refresh-btn"),
+  pricingSyncStatus: document.getElementById("pricing-sync-status"),
+  pricingRuntimeAlert: document.getElementById("pricing-runtime-alert"),
   pricingSource: document.getElementById("pricing-source"),
   pricingSearch: document.getElementById("pricing-search"),
   pricingProviderFilter: document.getElementById("pricing-provider-filter"),
@@ -48,6 +55,7 @@ export const ui = {
   exportBtn: document.getElementById("export-csv"),
   lastUpdated: document.getElementById("last-updated"),
   errorBanner: document.getElementById("error-banner"),
+  warningBanner: document.getElementById("warning-banner"),
   eventDetailOverlay: document.getElementById("event-detail-overlay"),
   eventDetailTitle: document.getElementById("event-detail-title"),
   eventDetailSubtitle: document.getElementById("event-detail-subtitle"),
@@ -64,7 +72,11 @@ export const local = {
   locale: persisted.locale === "it" || persisted.locale === "en" ? persisted.locale : browserLocale,
   currency: persisted.currency === "eur" || persisted.currency === "usd" ? persisted.currency : "usd",
   range: persisted.range || "billingCycle",
+  breakdownRange: persisted.breakdownRange || persisted.range || "billingCycle",
   usageFilter: persisted.usageFilter || "all",
+  metric: persisted.metric === "spend" || persisted.metric === "requests" || persisted.metric === "tokens"
+    ? persisted.metric
+    : "tokens",
   sortKey: persisted.sortKey || "timestamp",
   sortOrder: persisted.sortOrder || "desc",
   breakdownSortKey: persisted.breakdownSortKey || "totalTokens",
@@ -107,7 +119,7 @@ export const refs = {
   chart: null,
   poolChart: null,
   poolPaceChart: null,
-  selectedEventIdx: null,
+  selectedEventKey: null,
   selectedConversationId: null,
 };
 
@@ -118,6 +130,15 @@ export function setState(next) {
 export function setChart(next) {
   if (refs.chart) {
     refs.chart.destroy();
+  }
+  refs.chart = next;
+}
+
+export function updateChart(next) {
+  if (!next && refs.chart) {
+    refs.chart.destroy();
+    refs.chart = null;
+    return;
   }
   refs.chart = next;
 }
@@ -136,8 +157,8 @@ export function setPoolPaceChart(next) {
   refs.poolPaceChart = next;
 }
 
-export function setSelectedEventIdx(next) {
-  refs.selectedEventIdx = next;
+export function setSelectedEventKey(next) {
+  refs.selectedEventKey = next;
 }
 
 export const TOKEN_COLORS = {
@@ -167,7 +188,9 @@ export function persistLocal() {
     locale: local.locale,
     currency: local.currency,
     range: local.range,
+    breakdownRange: local.breakdownRange,
     usageFilter: local.usageFilter,
+    metric: local.metric,
     sortKey: local.sortKey,
     sortOrder: local.sortOrder,
     breakdownSortKey: local.breakdownSortKey,

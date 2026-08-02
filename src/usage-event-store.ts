@@ -93,9 +93,9 @@ export class UsageEventStore {
     );
   }
 
-  /** Dedupe rows and rewrite payloads after request-count normalization / fingerprint change. */
+  /** Dedupe rows and rewrite payloads after request/token normalization / fingerprint change. */
   private migrateStoredEventsIfNeeded(): void {
-    if (!this.db || this.getMeta("event_store_schema") === "2") return;
+    if (!this.db || this.getMeta("event_store_schema") === "3") return;
 
     const select = this.db.prepare("SELECT payload_json, synced_at FROM usage_events");
     const byFingerprint = new Map<string, { event: UsageEvent; syncedAt: number }>();
@@ -158,14 +158,34 @@ export class UsageEventStore {
       insert.free();
     }
 
-    this.setMeta("event_store_schema", "2");
+    this.setMeta("event_store_schema", "3");
   }
 
   upsertEvents(events: UsageEvent[]): number {
     if (!this.db || events.length === 0) return 0;
+    return this.insertEvents(events, "INSERT OR REPLACE");
+  }
+
+  /** Replace all stored events in [sinceMs, ∞) with the API snapshot (manual refresh). */
+  syncEventsFromApi(events: UsageEvent[], sinceMs: number, opts?: { allowEmpty?: boolean }): number {
+    if (!this.db) return 0;
+    if (events.length === 0 && !opts?.allowEmpty) return 0;
+    this.db.run("DELETE FROM usage_events WHERE timestamp >= ?", [sinceMs]);
+    if (events.length === 0) {
+      this.schedulePersist();
+      return 0;
+    }
+    return this.insertEvents(events, "INSERT OR REPLACE");
+  }
+
+  private insertEvents(
+    events: UsageEvent[],
+    insertMode: "INSERT" | "INSERT OR IGNORE" | "INSERT OR REPLACE",
+  ): number {
+    if (!this.db || events.length === 0) return 0;
 
     const stmt = this.db.prepare(`
-      INSERT OR IGNORE INTO usage_events (
+      ${insertMode} INTO usage_events (
         event_key, timestamp, conversation_id, model, kind, total_tokens, requests, spend_cents,
         max_mode, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
         token_cost_cents, cursor_token_fee, is_token_based, is_headless, is_chargeable,
@@ -239,6 +259,16 @@ export class UsageEventStore {
     }
     stmt.free();
     return count;
+  }
+
+  /** Flush pending debounced writes immediately (e.g. after manual refresh sync). */
+  flushPersist(): void {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    this.persistDirty = false;
+    this.persist();
   }
 
   close(): void {

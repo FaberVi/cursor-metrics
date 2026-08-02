@@ -2,6 +2,7 @@ import { local, refs, ui } from "./core.js";
 import {
   eventSpendDollars,
   eventRequestCount,
+  eventTokenCount,
   formatModelLabel,
   getActiveCurrency,
   isIncludedEvent,
@@ -34,7 +35,7 @@ export function exportCsv() {
       e.kind,
       formatModelLabel(e.model),
       e.maxMode ? "true" : "false",
-      e.totalTokens || 0,
+      eventTokenCount(e),
       tokenField(e, "inputTokens"),
       tokenField(e, "outputTokens"),
       tokenField(e, "cacheWriteTokens"),
@@ -68,5 +69,17 @@ export function showError(msg) {
     ui.errorBanner.classList.remove("hidden");
   } else {
     ui.errorBanner.classList.add("hidden");
+  }
+}
+
+export function showWarnings(warnings) {
+  if (!ui.warningBanner) return;
+  const list = Array.isArray(warnings) ? warnings.filter((w) => typeof w === "string" && w.length > 0) : [];
+  if (list.length > 0) {
+    ui.warningBanner.textContent = list.join("\n");
+    ui.warningBanner.classList.remove("hidden");
+  } else {
+    ui.warningBanner.textContent = "";
+    ui.warningBanner.classList.add("hidden");
   }
 }

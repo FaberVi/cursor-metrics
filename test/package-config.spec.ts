@@ -8,7 +8,7 @@ describe("package configuration", () => {
 
     expect(usageDurationConfig.enum).toContain("billingCycle");
     expect(usageDurationConfig.enumItemLabels).toEqual([
-      "Last 24 hours",
+      "Today",
       "Last 7 days",
       "Last 30 days",
       "Current Billing Cycle",

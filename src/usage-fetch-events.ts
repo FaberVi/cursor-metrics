@@ -5,6 +5,31 @@ import { asRecord, MAX_USAGE_EVENT_PAGES, toNumber, withTimeout } from "./cursor
 import { ensureSetup } from "./cursor-setup";
 import { normalizeUsageEventRequests, parseUsageEvent } from "./cursor-usage-parsing";
 
+import { getBillingCycleCutoff } from "./cursor-api-utils";
+
+export type FetchDailySpendOptions = {
+  resetAtIso?: string | null;
+  periodStartMs?: number;
+  periodEndMs?: number;
+};
+
+function resolveDailySpendPeriod(opts?: FetchDailySpendOptions): { periodStartMs: number; periodEndMs: number } {
+  const periodEndMs = opts?.periodEndMs ?? Date.now();
+  if (opts?.periodStartMs !== undefined) {
+    return { periodStartMs: opts.periodStartMs, periodEndMs };
+  }
+  if (opts?.resetAtIso) {
+    return {
+      periodStartMs: getBillingCycleCutoff(opts.resetAtIso, periodEndMs),
+      periodEndMs,
+    };
+  }
+  return {
+    periodStartMs: periodEndMs - 31 * 86_400_000,
+    periodEndMs,
+  };
+}
+
 function parseDailySpendRow(row: unknown): DailySpendRow | null {
   const data = asRecord(row);
   if (!data) return null;
@@ -74,7 +99,9 @@ async function resolveDashboardUserId(
   return null;
 }
 
-export async function fetchDailySpendByCategory(): Promise<DailySpendRow[]> {
+export async function fetchDailySpendByCategory(
+  opts?: FetchDailySpendOptions,
+): Promise<DailySpendRow[]> {
   apiLog("--- Fetching daily spend by category ---");
 
   const auth = await getCursorToken();
@@ -96,8 +123,7 @@ export async function fetchDailySpendByCategory(): Promise<DailySpendRow[]> {
     return [];
   }
 
-  const periodEndMs = Date.now();
-  const periodStartMs = periodEndMs - 31 * 86_400_000;
+  const { periodStartMs, periodEndMs } = resolveDailySpendPeriod(opts);
   const res = await fetch("https://cursor.com/api/dashboard/get-daily-spend-by-category", withTimeout({
     method: "POST",
     headers,
@@ -132,13 +158,19 @@ export type FetchUsageEventsOptions = {
   lookbackDays?: number;
 };
 
-export async function fetchUsageEvents(opts: FetchUsageEventsOptions = {}): Promise<UsageEvent[]> {
+export type FetchUsageEventsResult = {
+  events: UsageEvent[];
+  /** True when the full lookback window was retrieved without auth/HTTP failure or page-cap truncation. */
+  complete: boolean;
+};
+
+export async function fetchUsageEvents(opts: FetchUsageEventsOptions = {}): Promise<FetchUsageEventsResult> {
   apiLog("--- Fetching usage events ---");
 
   const auth = await getCursorToken();
   if (!auth) {
     apiLog("Failed to get auth token for events");
-    return [];
+    return { events: [], complete: false };
   }
 
   const headers = cursorHeaders(auth.sessionToken);
@@ -152,6 +184,7 @@ export async function fetchUsageEvents(opts: FetchUsageEventsOptions = {}): Prom
   const pageSize = 500;
   let page = 1;
   const allEvents: UsageEvent[] = [];
+  let complete = true;
 
   while (page <= maxPages) {
     const res = await fetch("https://cursor.com/api/dashboard/get-filtered-usage-events", withTimeout({
@@ -168,6 +201,7 @@ export async function fetchUsageEvents(opts: FetchUsageEventsOptions = {}): Prom
 
     if (!res.ok) {
       apiLog(`get-filtered-usage-events failed: ${res.status}`);
+      complete = false;
       break;
     }
 
@@ -189,9 +223,10 @@ export async function fetchUsageEvents(opts: FetchUsageEventsOptions = {}): Prom
   }
 
   if (page > maxPages) {
+    complete = false;
     apiLog(`Stopped usage events fetch after ${maxPages} page(s)`);
   }
 
   apiLog(`Fetched ${allEvents.length} usage events across ${Math.min(page, maxPages)} page(s)`);
-  return allEvents.map(normalizeUsageEventRequests);
+  return { events: allEvents.map(normalizeUsageEventRequests), complete };
 }

@@ -16,11 +16,14 @@ import {
   saveDashboardUiPreferences,
   type DashboardUiPreferences,
 } from "./dashboard-ui-state";
+import { normalizeUsageDuration, resolveConfiguredUsageDuration, syncUsageDurationToSettings } from "./duration-options";
 import type { UsageDuration } from "./model-breakdown";
 import type { DashboardState, UsageFilter } from "./dashboard-state";
+import type { UpdateUsageOptions } from "./extension-refresh";
+import { refreshPricingCatalog } from "./pricing-catalog-refresh";
 import { makeDashboardNonce, renderDashboardHtml } from "./dashboard/dashboard-html";
 
-type RefreshFn = () => Promise<void>;
+type RefreshFn = (opts?: UpdateUsageOptions) => Promise<void>;
 type StateProvider = () => DashboardState | null;
 type LocaleChangeFn = (locale: DashboardLocale) => void;
 type PreviewChangeFn = (enabled: boolean) => void | Promise<void>;
@@ -107,7 +110,21 @@ export class DashboardPanel {
       async (msg) => {
         if (!msg || typeof msg !== "object") return;
         if (msg.type === "ready") {
-          this.postUiPreferences(loadDashboardUiPreferences(this.context));
+          const state = getState();
+          const hasBillingCycle = Boolean(state?.resetsAt);
+          const prefs = loadDashboardUiPreferences(this.context);
+          const cfgRange = resolveConfiguredUsageDuration(
+            vscode.workspace.getConfiguration("cursorUsage").get("usageDuration"),
+            hasBillingCycle,
+          );
+          const mergedPrefs = {
+            ...prefs,
+            range: prefs.range ?? cfgRange,
+          };
+          if (!prefs.range) {
+            await saveDashboardUiPreferences(this.context, { range: cfgRange });
+          }
+          this.postUiPreferences(mergedPrefs);
           const savedLocale = this.context.globalState.get<DashboardLocale>(DASHBOARD_LOCALE_KEY);
           if (isDashboardLocale(savedLocale)) {
             this.panel.webview.postMessage({ type: "init", locale: savedLocale });
@@ -118,7 +135,6 @@ export class DashboardPanel {
           }
           const previewEnabled = this.context.globalState.get<boolean>(CONVERSATION_PREVIEW_KEY) === true;
           this.panel.webview.postMessage({ type: "initPreview", enabled: previewEnabled });
-          const state = getState();
           if (state) this.postState(state);
         } else if (msg.type === "setLocale" && isDashboardLocale(msg.locale)) {
           await this.context.globalState.update(DASHBOARD_LOCALE_KEY, msg.locale);
@@ -146,9 +162,14 @@ export class DashboardPanel {
         } else if (msg.type === "saveUiPreferences") {
           const patch = msg.preferences as DashboardUiPreferences | undefined;
           if (patch && typeof patch === "object") {
-            const saved = await saveDashboardUiPreferences(this.context, patch);
-            this.postUiPreferences(saved);
+            await saveDashboardUiPreferences(this.context, patch);
           }
+        } else if (msg.type === "syncRangeToSettings" && isUsageDuration(msg.range)) {
+          const state = getState();
+          const hasBillingCycle = Boolean(state?.resetsAt);
+          const normalized = normalizeUsageDuration(msg.range, hasBillingCycle);
+          await syncUsageDurationToSettings(msg.range, hasBillingCycle);
+          this.dashboardPrefs.range = normalized;
         } else if (msg.type === "syncDashboardPrefs") {
           if (isUsageDuration(msg.range)) this.dashboardPrefs.range = msg.range;
           if (isUsageFilter(msg.usageFilter)) this.dashboardPrefs.usageFilter = msg.usageFilter;
@@ -179,9 +200,31 @@ export class DashboardPanel {
         } else if (msg.type === "refresh") {
           this.postLoading(true);
           try {
-            await onRefresh();
+            await onRefresh({ force: true });
           } finally {
             this.postLoading(false);
+          }
+        } else if (msg.type === "refreshPricingCatalog") {
+          this.panel.webview.postMessage({ type: "pricingSyncLoading", on: true });
+          try {
+            const result = await refreshPricingCatalog();
+            this.panel.webview.postMessage({
+              type: "pricingSyncStatus",
+              ok: true,
+              updated: result.updated,
+              added: result.added,
+              warnings: result.warnings,
+            });
+            const state = getState();
+            if (state) this.postState(state);
+          } catch (err: unknown) {
+            this.panel.webview.postMessage({
+              type: "pricingSyncStatus",
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          } finally {
+            this.panel.webview.postMessage({ type: "pricingSyncLoading", on: false });
           }
         }
       },
@@ -201,6 +244,10 @@ export class DashboardPanel {
 
   postUiPreferences(preferences: DashboardUiPreferences): void {
     this.panel.webview.postMessage({ type: "uiPreferences", preferences });
+  }
+
+  postRangePreference(range: UsageDuration): void {
+    this.panel.webview.postMessage({ type: "rangePreference", range });
   }
 
   postLoading(on: boolean): void {

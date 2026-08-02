@@ -3,6 +3,8 @@ import type { DailySpendRow, UsageEvent } from "../src/cursor-api";
 import {
   aggregateByModel,
   aggregateSpendByCategory,
+  aggregateTokensByCategory,
+  buildModelTokenTotals,
   filterZeroTokenModels,
   formatDollarsFromCents,
   getDurationCutoff,
@@ -41,6 +43,19 @@ describe("model breakdown aggregation", () => {
     expect(totals.has("unknown")).toBeFalse();
   });
 
+  it("sums tokens by category for the selected duration", () => {
+    const spendRows: DailySpendRow[] = [
+      { day: now - 2 * dayMs, category: "gpt-5.3-codex", spendCents: 120, totalTokens: 10_000 },
+      { day: now - 2 * dayMs, category: "gpt-5.3-codex", spendCents: 80, totalTokens: 20_000 },
+      { day: now - 1 * dayMs, category: "gpt-5.4-high", spendCents: 55, totalTokens: 5_000 },
+      { day: now - 40 * dayMs, category: "gpt-5.3-codex", spendCents: 999, totalTokens: 100_000 },
+    ];
+
+    const totals = aggregateTokensByCategory(spendRows, "7d", null, now);
+    expect(totals.get("gpt-5.3-codex")).toBe(30_000);
+    expect(totals.get("gpt-5.4-high")).toBe(5_000);
+  });
+
   it("joins tokens, requests, and spend by model", () => {
     const events: UsageEvent[] = [
       { ...baseEvent, timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 2000, requests: 2 },
@@ -55,6 +70,65 @@ describe("model breakdown aggregation", () => {
     expect(rows).toEqual([
       { model: "gpt-5.3-codex", totalTokens: 5000, requests: 3, spendCents: 320 },
       { model: "composer-2", totalTokens: 1000, requests: 4, spendCents: 0 },
+    ]);
+  });
+
+  it("prefers daily spend tokens over per-event totals when daily rows exist", () => {
+    const events: UsageEvent[] = [
+      { ...baseEvent, timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 9000, requests: 2 },
+    ];
+    const spendRows: DailySpendRow[] = [
+      { day: now - 1 * dayMs, category: "gpt-5.3-codex", spendCents: 100, totalTokens: 3000 },
+    ];
+
+    const rows = aggregateByModel(events, spendRows, "7d", null, now);
+    expect(rows).toEqual([
+      { model: "gpt-5.3-codex", totalTokens: 3000, requests: 2, spendCents: 100 },
+    ]);
+  });
+
+  it("falls back to event tokens when daily spend rows are empty", () => {
+    const events: UsageEvent[] = [
+      { ...baseEvent, timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 9000, requests: 2 },
+    ];
+
+    const rows = aggregateByModel(events, [], "7d", null, now);
+    expect(rows).toEqual([
+      { model: "gpt-5.3-codex", totalTokens: 9000, requests: 2, spendCents: 0 },
+    ]);
+  });
+
+  it("uses filtered event tokens when usage filter is not all", () => {
+    const events: UsageEvent[] = [
+      { ...baseEvent, timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 1000, requests: 1 },
+      { ...baseEvent, timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "On-Demand", totalTokens: 2000, requests: 1 },
+    ];
+    const spendRows: DailySpendRow[] = [
+      { day: now - 1 * dayMs, category: "gpt-5.3-codex", spendCents: 100, totalTokens: 9000 },
+    ];
+
+    const included = buildModelTokenTotals(events, spendRows, "7d", null, now, "included");
+    const onDemand = buildModelTokenTotals(events, spendRows, "7d", null, now, "ondemand");
+    const all = buildModelTokenTotals(events, spendRows, "7d", null, now, "all");
+
+    expect(included.get("gpt-5.3-codex")).toBe(1000);
+    expect(onDemand.get("gpt-5.3-codex")).toBe(2000);
+    expect(all.get("gpt-5.3-codex")).toBe(9000);
+  });
+
+  it("falls back to event tokens for models missing from daily spend", () => {
+    const events: UsageEvent[] = [
+      { ...baseEvent, timestamp: now - 1 * dayMs, model: "gpt-5.3-codex", kind: "Included", totalTokens: 9000, requests: 2 },
+      { ...baseEvent, timestamp: now - 1 * dayMs, model: "composer-2", kind: "Included", totalTokens: 1000, requests: 1 },
+    ];
+    const spendRows: DailySpendRow[] = [
+      { day: now - 1 * dayMs, category: "gpt-5.3-codex", spendCents: 100, totalTokens: 3000 },
+    ];
+
+    const rows = aggregateByModel(events, spendRows, "7d", null, now);
+    expect(rows).toEqual([
+      { model: "gpt-5.3-codex", totalTokens: 3000, requests: 2, spendCents: 100 },
+      { model: "composer-2", totalTokens: 1000, requests: 1, spendCents: 0 },
     ]);
   });
 
@@ -161,7 +235,7 @@ describe("model breakdown formatting", () => {
   });
 
   it("computes cutoff timestamps for all durations", () => {
-    expect(getDurationCutoff("1d", null, now)).toBe(now - 1 * dayMs);
+    expect(getDurationCutoff("1d", null, now)).toBe(Date.UTC(2026, 3, 20, 0, 0, 0));
     expect(getDurationCutoff("7d", null, now)).toBe(now - 7 * dayMs);
     expect(getDurationCutoff("30d", null, now)).toBe(now - 30 * dayMs);
     expect(getDurationCutoff("billingCycle", "2026-05-01T00:00:00.000Z", now)).toBe(Date.UTC(2026, 3, 1, 0, 0, 0));

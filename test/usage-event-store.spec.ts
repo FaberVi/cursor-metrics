@@ -34,10 +34,59 @@ describe("usageEventFingerprint", () => {
     const normalized = normalizeUsageEventRequests(base);
     expect(usageEventFingerprint(base)).toBe(usageEventFingerprint(normalized));
   });
+
+  it("ignores derived totalTokens when component breakdown exists", () => {
+    const polluted = usageEvent({
+      timestamp: 1,
+      model: "gpt-5",
+      kind: "Included",
+      totalTokens: 58_077_533,
+      inputTokens: 4089,
+      outputTokens: 1442,
+      cacheReadTokens: 587_296,
+      isTokenBasedCall: true,
+      requests: 58_077_533,
+    });
+    const normalized = normalizeUsageEventRequests(polluted);
+    expect(normalized.totalTokens).toBe(592_827);
+    expect(usageEventFingerprint(polluted)).toBe(usageEventFingerprint(normalized));
+  });
 });
 
 describe("UsageEventStore", () => {
   const extensionPath = process.cwd();
+
+  it("replaces existing events with the same fingerprint on upsert", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cursor-usage-store-"));
+    const store = new UsageEventStore(dir, extensionPath);
+    await store.init();
+
+    const eventA = usageEvent({
+      timestamp: 1_700_000_000_000,
+      model: "gpt-5",
+      kind: "Included",
+      totalTokens: 100,
+      spendCents: 0,
+    });
+    const eventAUpdated = usageEvent({
+      timestamp: 1_700_000_000_000,
+      model: "gpt-5",
+      kind: "Included",
+      totalTokens: 250,
+      spendCents: 0,
+    });
+
+    expect(store.upsertEvents([eventA])).toBe(1);
+    expect(store.upsertEvents([eventAUpdated])).toBe(1);
+    expect(store.getEventCount()).toBe(1);
+
+    const loaded = store.getEventsSince(0);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]?.totalTokens).toBe(250);
+
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
 
   it("inserts distinct events and ignores duplicates", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cursor-usage-store-"));
@@ -60,7 +109,7 @@ describe("UsageEventStore", () => {
     });
 
     expect(store.upsertEvents([eventA])).toBe(1);
-    expect(store.upsertEvents([eventA])).toBe(0);
+    expect(store.upsertEvents([eventA])).toBe(1);
     expect(store.upsertEvents([eventB])).toBe(1);
     expect(store.getEventCount()).toBe(2);
 
@@ -124,6 +173,77 @@ describe("UsageEventStore", () => {
     expect(loaded[0]!.requests).toBe(1);
 
     reopened.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("syncEventsFromApi replaces events in window and removes stale rows", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cursor-usage-store-"));
+    const store = new UsageEventStore(dir, extensionPath);
+    await store.init();
+
+    const oldTs = 1_600_000_000_000;
+    const inWindowTs = 1_700_000_000_000;
+    const sinceMs = 1_650_000_000_000;
+
+    store.upsertEvents([
+      usageEvent({ timestamp: oldTs, model: "legacy", kind: "Included", totalTokens: 1, spendCents: 0 }),
+      usageEvent({ timestamp: inWindowTs, model: "stale", kind: "Included", totalTokens: 50, spendCents: 0 }),
+    ]);
+    expect(store.getEventCount()).toBe(2);
+
+    const fresh = usageEvent({
+      timestamp: inWindowTs,
+      model: "fresh",
+      kind: "Included",
+      totalTokens: 200,
+      spendCents: 10,
+    });
+    expect(store.syncEventsFromApi([fresh], sinceMs)).toBe(1);
+
+    const all = store.getEventsSince(0);
+    expect(all).toHaveLength(2);
+    expect(all.some((e) => e.model === "legacy")).toBe(true);
+    expect(all.some((e) => e.model === "stale")).toBe(false);
+    expect(all.some((e) => e.model === "fresh" && e.spendCents === 10)).toBe(true);
+
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("syncEventsFromApi does not touch events older than sinceMs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cursor-usage-store-"));
+    const store = new UsageEventStore(dir, extensionPath);
+    await store.init();
+
+    const oldTs = 1_600_000_000_000;
+    const sinceMs = 1_650_000_000_000;
+
+    store.upsertEvents([
+      usageEvent({ timestamp: oldTs, model: "ancient", kind: "Included", totalTokens: 1, spendCents: 0 }),
+    ]);
+    expect(store.syncEventsFromApi([], sinceMs, { allowEmpty: true })).toBe(0);
+    expect(store.getEventCount()).toBe(1);
+    expect(store.getEventsSince(0)[0]!.model).toBe("ancient");
+
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("syncEventsFromApi skips empty sync without allowEmpty", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cursor-usage-store-"));
+    const store = new UsageEventStore(dir, extensionPath);
+    await store.init();
+
+    const inWindowTs = 1_700_000_000_000;
+    const sinceMs = 1_650_000_000_000;
+    store.upsertEvents([
+      usageEvent({ timestamp: inWindowTs, model: "keep", kind: "Included", totalTokens: 1, spendCents: 0 }),
+    ]);
+
+    expect(store.syncEventsFromApi([], sinceMs)).toBe(0);
+    expect(store.getEventCount()).toBe(1);
+
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   });
 });

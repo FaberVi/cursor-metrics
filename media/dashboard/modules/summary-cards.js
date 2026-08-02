@@ -4,6 +4,7 @@ import {
   escapeHtml,
   formatPercent,
   formatPlanPriceText,
+  rangeNow,
 } from "./format.js";
 
 const DAY_MS = 86_400_000;
@@ -16,7 +17,7 @@ function getBillingCycleMeta(resetAtIso) {
   cycleStart.setMonth(cycleStart.getMonth() - 1);
   const startMs = cycleStart.getTime();
   const resetMs = reset.getTime();
-  const now = Date.now();
+  const now = rangeNow();
   const totalMs = resetMs - startMs;
   if (totalMs <= 0) return null;
   const elapsedMs = Math.max(0, now - startMs);

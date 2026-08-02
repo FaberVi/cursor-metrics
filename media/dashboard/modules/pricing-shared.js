@@ -1,6 +1,6 @@
 import { refs, local, persistGlobalUi, persistLocal } from "./core.js";
 import { aggregateTheoreticalByModel, formatRateUsd } from "../../../src/model-pricing.ts";
-import { escapeHtml, matchesUsageFilter } from "./format.js";
+import { escapeHtml, matchesUsageFilter, rangeNow } from "./format.js";
 import { t } from "./i18n.js";
 
 export function getPricingState() {
@@ -29,7 +29,7 @@ export function aggregateForRange() {
     filtered,
     local.range,
     refs.state.resetsAt,
-    refs.state.generatedAt,
+    rangeNow(),
     getEstimateOpts(),
   );
 }

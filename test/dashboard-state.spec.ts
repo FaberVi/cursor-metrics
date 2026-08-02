@@ -2,7 +2,9 @@ import { describe, expect, it } from "bun:test";
 import type { UsageEvent, UsagePayload } from "../src/cursor-api";
 import {
   aggregateChartSeries,
+  aggregateModelBreakdownTotals,
   buildDashboardState,
+  filterEventsForChartRange,
   filterEventsForRange,
   paginateList,
   summarizeRange,
@@ -56,7 +58,28 @@ describe("buildDashboardState", () => {
     expect(state.poolRecommended).toBeNull();
     expect(state.error).toBeNull();
     expect(state.resetsAt).toBeNull();
+    expect(state.warnings).toEqual([]);
+    expect(state.eventsComplete).toBeTrue();
     expect(state.cardHelp.includedRequests).toContain("Legacy");
+  });
+
+  it("propagates warnings and eventsComplete flags", () => {
+    const state = buildDashboardState(
+      sampleData,
+      sampleEvents,
+      [],
+      false,
+      null,
+      now,
+      true,
+      {},
+      0,
+      sampleEvents,
+      ["Events outdated"],
+      false,
+    );
+    expect(state.warnings).toEqual(["Events outdated"]);
+    expect(state.eventsComplete).toBeFalse();
   });
 
   it("hides legacy request counter for team accounts with pool usage", () => {
@@ -258,6 +281,59 @@ describe("aggregateChartSeries", () => {
     for (let i = 1; i < totals.length; i++) {
       expect(totals[i - 1]).toBeGreaterThanOrEqual(totals[i]!);
     }
+  });
+
+  it("varies day bucket count by selected range", () => {
+    const oneDay = aggregateChartSeries(sampleEvents, [], "1d", null, "tokens", "all", now);
+    const sevenDay = aggregateChartSeries(sampleEvents, [], "7d", null, "tokens", "all", now);
+    const thirtyDay = aggregateChartSeries(sampleEvents, [], "30d", null, "tokens", "all", now);
+    expect(oneDay.labels.length).toBe(1);
+    expect(sevenDay.labels.length).toBe(8);
+    expect(thirtyDay.labels.length).toBe(31);
+    expect(oneDay.labels.length).toBeLessThan(sevenDay.labels.length);
+    expect(sevenDay.labels.length).toBeLessThan(thirtyDay.labels.length);
+  });
+
+  it("includes only same-day events for the 1d (today) range", () => {
+    const empty = aggregateChartSeries(sampleEvents, [], "1d", null, "tokens", "all", now);
+    expect(empty.datasets.length).toBe(0);
+
+    const todayEvents: UsageEvent[] = [
+      { ...baseEvent, timestamp: now - 2 * 3_600_000, model: "gpt-5.3-codex", kind: "Included", totalTokens: 1200, requests: 1 },
+    ];
+    const series = aggregateChartSeries(todayEvents, [], "1d", null, "tokens", "all", now);
+    expect(sumOf(series.datasets[0]!.data)).toBe(1200);
+  });
+
+  it("filterEventsForChartRange matches chart series token totals", () => {
+    const filtered = filterEventsForChartRange(sampleEvents, "7d", null, "all", now);
+    const series = aggregateChartSeries(sampleEvents, [], "7d", null, "tokens", "all", now);
+    const filteredTokens = filtered.reduce((sum, e) => sum + (e.totalTokens ?? 0), 0);
+    const chartTokens = series.datasets.reduce(
+      (sum, d) => sum + d.data.reduce((a, b) => a + b, 0),
+      0,
+    );
+    expect(filteredTokens).toBe(chartTokens);
+  });
+
+  it("aggregateModelBreakdownTotals matches chart per-model token sums", () => {
+    const breakdown = aggregateModelBreakdownTotals(sampleEvents, [], "7d", null, "all", now);
+    const series = aggregateChartSeries(sampleEvents, [], "7d", null, "tokens", "all", now);
+    const sumBreakdown = breakdown.reduce((sum, row) => sum + row.totalTokens, 0);
+    const sumChart = series.datasets.reduce(
+      (sum, d) => sum + d.data.reduce((a, b) => a + b, 0),
+      0,
+    );
+    expect(sumBreakdown).toBe(sumChart);
+    const codex = breakdown.find((r) => r.model === "gpt-5.3-codex");
+    expect(codex?.totalTokens).toBe(5000);
+  });
+
+  it("extends billing cycle axis through day before reset", () => {
+    const resetAtIso = new Date(now + 5 * dayMs).toISOString();
+    const series = aggregateChartSeries(sampleEvents, [], "billingCycle", resetAtIso, "tokens", "all", now);
+    expect(series.labels.length).toBeGreaterThan(30);
+    expect(series.dayMs?.length).toBe(series.labels.length);
   });
 });
 

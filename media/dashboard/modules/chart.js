@@ -1,78 +1,42 @@
-﻿import { DAY_MS, local, PALETTE, refs, setChart, ui } from "./core.js";
-import { t } from "./i18n.js";
+﻿import { local, PALETTE, refs, updateChart, ui } from "./core.js";
+import { t, getDateLocale } from "./i18n.js";
 import {
   escapeHtml,
-  chartSpendDollars,
   formatBillableSpendCents,
-  formatDayLabel,
+  formatDollars,
   formatModelLabel,
   formatPercent,
+  formatRangePeriod,
+  formatRequests,
   formatTokens,
-  getDurationCutoff,
-  matchesUsageFilter,
-  startOfUtcDay,
-  stateGeneratedAt,
-  toMillis,
+  metricLabel,
+  formatChartMetricValue,
+  rangeNow,
 } from "./format.js";
+import {
+  buildPoolSpendIndex,
+  computeModelPoolMetricsForDay,
+} from "../../../src/model-pool-share.ts";
+import { getBillingCycleCutoff } from "../../../src/cursor-api-utils.ts";
+import { aggregateChartSeries } from "../../../src/dashboard-state.ts";
+
+let modelColorMap = new Map();
 
 function buildChartSeries() {
   const events = Array.isArray(refs.state?.events) ? refs.state.events : [];
-  const now = stateGeneratedAt();
-  const cutoff = getDurationCutoff(local.range, refs.state?.resetsAt ?? null, now);
-  const start = startOfUtcDay(cutoff);
-  let end = startOfUtcDay(now);
-  if (local.range === "billingCycle" && refs.state?.resetsAt) {
-    const reset = new Date(refs.state.resetsAt);
-    if (!Number.isNaN(reset.getTime())) {
-      const cycleEnd = startOfUtcDay(reset.getTime() - DAY_MS);
-      if (cycleEnd > end) end = cycleEnd;
-    }
-  }
-  if (end < start) end = start;
-  const days = [];
-  for (let d = start; d <= end; d += DAY_MS) days.push(d);
-  if (days.length === 0) days.push(end);
-  const dayIndex = new Map(days.map((d, i) => [d, i]));
-
-  const perModel = new Map();
-  const perModelSpend = new Map();
-  const ensureArr = (map, m) => {
-    let arr = map.get(m);
-    if (!arr) {
-      arr = new Array(days.length).fill(0);
-      map.set(m, arr);
-    }
-    return arr;
-  };
-
-  for (const e of events) {
-    const ts = toMillis(e.timestamp);
-    if (!Number.isFinite(ts) || ts < cutoff) continue;
-    if (!matchesUsageFilter(e, local.usageFilter)) continue;
-    const day = startOfUtcDay(ts);
-    const idx = dayIndex.get(day);
-    if (idx === undefined) continue;
-    const spend = chartSpendDollars(e);
-    const value = e.totalTokens || 0;
-    ensureArr(perModel, e.model)[idx] += value;
-    ensureArr(perModelSpend, e.model)[idx] += spend;
-  }
-
-  const datasets = [];
-  for (const [model, arr] of perModel.entries()) {
-    datasets.push({
-      model,
-      data: arr.slice(),
-      spendByDay: (perModelSpend.get(model) || new Array(days.length).fill(0)).slice(),
-      total: arr.reduce((a, b) => a + b, 0),
-    });
-  }
-  datasets.sort((a, b) => b.total - a.total);
-
-  return { labels: days.map(formatDayLabel), dayMs: days, datasets };
+  const locale = getDateLocale();
+  return aggregateChartSeries(
+    events,
+    Array.isArray(refs.state?.dailySpend) ? refs.state.dailySpend : [],
+    local.range,
+    refs.state?.resetsAt ?? null,
+    local.metric,
+    local.usageFilter,
+    rangeNow(),
+    refs.state?.quotaAwareEventDisplay !== false,
+    locale,
+  );
 }
-
-let modelColorMap = new Map();
 
 function rebuildModelColorMap(series) {
   modelColorMap = new Map();
@@ -125,7 +89,25 @@ function getPoolDailyForDay(dayMs) {
   return {
     auto: pool.dailyAutoPercent[idx] || 0,
     api: pool.dailyApiPercent[idx] || 0,
+    dayIndex: idx,
   };
+}
+
+function formatPoolShareCell(metrics) {
+  if (!metrics) return t("poolMetricsUnavailable");
+  const abbr = metrics.pool === "firstParty" ? t("poolShareFp") : t("poolShareApi");
+  return formatPercent(metrics.poolSharePercent) + "% · " + abbr;
+}
+
+function formatQuotaCell(metrics) {
+  if (!metrics) return t("poolMetricsUnavailable");
+  return formatPercent(metrics.quotaPointsPercent) + "%";
+}
+
+function formatTooltipMetricValue(value) {
+  if (local.metric === "spend") return formatDollars(value);
+  if (local.metric === "requests") return formatRequests(value);
+  return formatTokens(value);
 }
 
 function renderExternalTooltip(context, opts) {
@@ -144,26 +126,48 @@ function renderExternalTooltip(context, opts) {
   const dataIndex = tooltip.dataPoints?.[0]?.dataIndex;
   const chartDayMs = Number.isInteger(dataIndex) ? opts.dayMs?.[dataIndex] : undefined;
   const poolDaily = chartDayMs !== undefined ? getPoolDailyForDay(chartDayMs) : null;
-  const metricLabel = t("metricTokens");
+  const metricLabelText = metricLabel(local.metric);
+  const showPoolCols = !!opts.poolSpendIndex && local.usageFilter !== "ondemand";
 
   const rows = dataPoints.map((dp) => {
     const ds = dp.dataset;
     const v = dp.parsed.y || 0;
     const spend = ds.spendByDay ? (ds.spendByDay[dp.dataIndex] || 0) : 0;
-    const color = ds.backgroundColor || colorForModel(ds.label);
+    const color = ds.backgroundColor || colorForModel(ds.modelId || ds.label);
+    let poolCells = "";
+    if (showPoolCols) {
+      const metrics =
+        poolDaily && ds.modelId
+          ? computeModelPoolMetricsForDay(
+              ds.modelId,
+              poolDaily.dayIndex,
+              opts.poolSpendIndex,
+              opts.dailyAutoPercent || [],
+              opts.dailyApiPercent || [],
+            )
+          : null;
+      poolCells =
+        '<td class="num">' + escapeHtml(formatPoolShareCell(metrics)) + "</td>" +
+        '<td class="num">' + escapeHtml(formatQuotaCell(metrics)) + "</td>";
+    }
     return (
       '<tr>' +
         '<td><span class="t-dot" style="background:' + color + '"></span>' + escapeHtml(ds.label) + '</td>' +
-        '<td class="num">' + formatTokens(v) + '</td>' +
+        '<td class="num">' + formatTooltipMetricValue(v) + '</td>' +
         '<td class="num">' + formatBillableSpendCents(Math.round(spend * 100)) + '</td>' +
+        poolCells +
       '</tr>'
     );
   }).join("");
 
   const headerCols =
     '<th>' + escapeHtml(t("colModel")) + '</th>' +
-    '<th class="num">' + metricLabel + '</th>' +
-    '<th class="num">' + escapeHtml(t("colSpend")) + '</th>';
+    '<th class="num">' + escapeHtml(metricLabelText) + '</th>' +
+    '<th class="num">' + escapeHtml(t("colSpend")) + '</th>' +
+    (showPoolCols
+      ? '<th class="num">' + escapeHtml(t("colPoolShare")) + '</th>' +
+        '<th class="num">' + escapeHtml(t("colPoolQuota")) + '</th>'
+      : "");
 
   const poolSection = poolDaily
     ? '<div class="t-subtitle">' + escapeHtml(t("poolUsageDay")) + "</div>" +
@@ -199,40 +203,13 @@ function renderExternalTooltip(context, opts) {
   el.style.opacity = "1";
 }
 
-export function renderChart() {
-  if (!ui.canvas || !refs.state) return;
-
-  let series;
-  try {
-    series = buildChartSeries();
-  } catch (err) {
-    if (ui.chartNote) {
-      ui.chartNote.textContent = String(err instanceof Error ? err.message : err);
-    }
-    return;
-  }
-  rebuildModelColorMap(series);
-  const yLabel = t("metricTokens");
-
-  const chartData = {
-    labels: series.labels,
-    datasets: series.datasets.map((d, i) => ({
-      label: formatModelLabel(d.model),
-      data: d.data,
-      spendByDay: d.spendByDay,
-      backgroundColor: PALETTE[i % PALETTE.length],
-      borderColor: PALETTE[i % PALETTE.length],
-      borderWidth: 0,
-      categoryPercentage: 0.7,
-      barPercentage: 0.85,
-    })),
-  };
-
+function buildChartOptions(series, poolSpendIndex, dailyAutoPercent, dailyApiPercent) {
   const styles = getComputedStyle(document.body);
   const muted = styles.getPropertyValue("--muted").trim() || "rgba(255,255,255,0.55)";
   const grid = styles.getPropertyValue("--border").trim() || "rgba(255,255,255,0.06)";
+  const yLabel = metricLabel(local.metric);
 
-  const opts = {
+  return {
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
@@ -253,7 +230,13 @@ export function renderChart() {
       },
       tooltip: {
         enabled: false,
-        external: (context) => renderExternalTooltip(context, { dayMs: series.dayMs }),
+        external: (context) =>
+          renderExternalTooltip(context, {
+            dayMs: series.dayMs,
+            poolSpendIndex,
+            dailyAutoPercent,
+            dailyApiPercent,
+          }),
       },
     },
     scales: {
@@ -269,7 +252,7 @@ export function renderChart() {
         ticks: {
           color: muted,
           font: { size: 10 },
-          callback: (v) => (Number.isFinite(v) ? formatTokens(v) : ""),
+          callback: (v) => (Number.isFinite(v) ? formatChartMetricValue(v, local.metric) : ""),
         },
         grid: { color: grid, drawBorder: false, drawTicks: false },
         border: { display: false },
@@ -277,8 +260,77 @@ export function renderChart() {
       },
     },
   };
+}
 
-  setChart(new Chart(ui.canvas.getContext("2d"), { type: "bar", data: chartData, options: opts }));
-  requestAnimationFrame(() => refs.chart?.resize());
+function buildChartData(series) {
+  return {
+    labels: series.labels,
+    datasets: series.datasets.map((d, i) => ({
+      label: formatModelLabel(d.model),
+      modelId: d.model,
+      data: d.data,
+      spendByDay: d.spendByDay,
+      backgroundColor: PALETTE[i % PALETTE.length],
+      borderColor: PALETTE[i % PALETTE.length],
+      borderWidth: 0,
+      categoryPercentage: 0.7,
+      barPercentage: 0.85,
+    })),
+  };
+}
+
+export function renderChart() {
+  if (!ui.canvas || !refs.state) return;
+
+  let series;
+  try {
+    series = buildChartSeries();
+  } catch (err) {
+    updateChart(null);
+    if (ui.chartNote) {
+      ui.chartNote.textContent = String(err instanceof Error ? err.message : err);
+    }
+    return;
+  }
+  rebuildModelColorMap(series);
+
+  if (ui.chartRangeLabel) {
+    ui.chartRangeLabel.textContent = formatRangePeriod(
+      local.range,
+      refs.state.resetsAt,
+      rangeNow(),
+    );
+  }
+
+  const poolSeries = refs.state.poolUsageSeries;
+  const poolUsage = refs.state.data?.poolUsage;
+  let poolSpendIndex = null;
+  let dailyAutoPercent = [];
+  let dailyApiPercent = [];
+  if (poolSeries?.dayMs?.length && poolUsage) {
+    const now = rangeNow();
+    const cycleStart = getBillingCycleCutoff(refs.state.resetsAt, now);
+    poolSpendIndex = buildPoolSpendIndex(
+      Array.isArray(refs.state.events) ? refs.state.events : [],
+      poolSeries.dayMs,
+      cycleStart,
+    );
+    dailyAutoPercent = poolSeries.dailyAutoPercent || [];
+    dailyApiPercent = poolSeries.dailyApiPercent || [];
+  }
+
+  const chartData = buildChartData(series);
+  const opts = buildChartOptions(series, poolSpendIndex, dailyAutoPercent, dailyApiPercent);
+
+  if (refs.chart) {
+    refs.chart.data = chartData;
+    refs.chart.options = opts;
+    refs.chart.update("none");
+    requestAnimationFrame(() => refs.chart?.resize());
+  } else {
+    updateChart(new Chart(ui.canvas.getContext("2d"), { type: "bar", data: chartData, options: opts }));
+    requestAnimationFrame(() => refs.chart?.resize());
+  }
+
   if (ui.chartNote) ui.chartNote.textContent = "";
 }

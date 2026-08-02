@@ -3,4 +3,5 @@ export {
   fetchDailySpendByCategory,
   fetchUsageEvents,
   type FetchUsageEventsOptions,
+  type FetchUsageEventsResult,
 } from "./usage-fetch-events";

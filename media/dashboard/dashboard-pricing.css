@@ -25,6 +25,63 @@
   text-decoration: underline;
 }
 
+.pricing-refresh-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.pricing-refresh-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pricing-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.pricing-sync-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+.pricing-sync-status.pricing-sync-error {
+  color: var(--danger, #f66);
+}
+
+.pricing-runtime-alert {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, #e6a700 55%, var(--border));
+  background: color-mix(in srgb, #e6a700 12%, var(--card));
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.pricing-runtime-alert strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.pricing-runtime-alert p {
+  margin: 0;
+}
+
+.pricing-runtime-only-models {
+  margin-top: 6px !important;
+  font-weight: 600;
+}
+
 .pricing-pool-banner {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

@@ -12,12 +12,15 @@ export type {
 export {
   enrichUsageFromEvents,
   eventRequestCount,
+  eventTokenCount,
   extractUsageFromSummary,
   extractUsageTotals,
   mergeTeamIncludedRequests,
   parseTimestamp,
   parseUsageEvent,
 } from "./cursor-usage-parsing";
+
+export { eventReportedUsageCostCents } from "./model-pricing";
 
 export {
   fetchDailySpendByCategory,

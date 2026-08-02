@@ -11,20 +11,26 @@ import {
   escapeHtml,
   eventRequestsText,
   eventSpendText,
+  eventTokenCount,
   formatDateTime,
   formatModelLabel,
   formatPerPage,
   formatTokens,
   getDurationCutoff,
   matchesUsageFilter,
-  stateGeneratedAt,
+  rangeNow,
   toMillis,
 } from "./format.js";
 import { t } from "./i18n.js";
 
+export function findEventByKey(events, eventKey) {
+  if (!eventKey) return null;
+  return events.find((event) => event.eventKey === eventKey) ?? null;
+}
+
 export function getSortedEvents() {
   if (!refs.state) return [];
-  const cutoff = getDurationCutoff(local.range, refs.state.resetsAt, stateGeneratedAt());
+  const cutoff = getDurationCutoff(local.range, refs.state.resetsAt, rangeNow());
   const events = refs.state.events.filter((e) => {
     const ts = toMillis(e.timestamp);
     return Number.isFinite(ts) && ts >= cutoff && matchesUsageFilter(e, local.usageFilter);
@@ -45,12 +51,13 @@ function renderEventRow(e, eventIdx) {
   const maxBadge = e.maxMode ? ' <span class="max-badge">MAX</span>' : "";
   const color = colorForModel(e.model);
   const rowStyle = 'background:' + tintColor(color, 0.10) + ';box-shadow:inset 3px 0 0 ' + color + ';';
-  const selected = refs.selectedEventIdx === eventIdx ? " event-row-selected" : "";
-  return '<tr class="event-row-clickable' + selected + '" data-event-idx="' + eventIdx + '" style="' + rowStyle + '" title="Click for token breakdown">' +
+  const eventKey = e.eventKey ?? "";
+  const selected = refs.selectedEventKey === eventKey ? " event-row-selected" : "";
+  return '<tr class="event-row-clickable' + selected + '" data-event-key="' + escapeHtml(eventKey) + '" data-event-idx="' + eventIdx + '" style="' + rowStyle + '" title="Click for token breakdown">' +
     "<td>" + formatDateTime(e.timestamp) + "</td>" +
     '<td><span class="kind-badge kind-' + e.kind.replace(/[^A-Za-z]/g, "") + '">' + e.kind + "</span></td>" +
     "<td>" + escapeHtml(formatModelLabel(e.model)) + maxBadge + "</td>" +
-    '<td class="num">' + formatTokens(e.totalTokens || 0) + "</td>" +
+    '<td class="num">' + formatTokens(eventTokenCount(e)) + "</td>" +
     '<td class="num">' + eventRequestsText(e) + "</td>" +
     '<td class="num">' + eventSpendText(e) + "</td>" +
   "</tr>";

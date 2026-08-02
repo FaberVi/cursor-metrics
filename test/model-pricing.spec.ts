@@ -5,6 +5,7 @@ import {
   aggregateTheoreticalByModel,
   estimateComponentCost,
   estimateEventTheoreticalCost,
+  eventReportedUsageCostCents,
   getModelPricingCatalog,
   resolveModelPricing,
   resolveModelPricingDetailed,
@@ -77,6 +78,14 @@ describe("resolveModelPricing", () => {
     expect(resolveModelPricingDetailed("claude-fable-5-thinking-xhigh")?.variant?.id).toBe("thinking");
     expect(resolveModelPricing("gpt-5.6-luna-medium")?.id).toBe("gpt-5.6-luna");
     expect(resolveModelPricing("gpt-5.6-terra-medium")?.id).toBe("gpt-5.6-terra");
+  });
+
+  it("resolves newly added production models", () => {
+    expect(resolveModelPricingDetailed("claude-opus-5-thinking-max")?.entry.id).toBe("claude-opus-5");
+    expect(resolveModelPricingDetailed("claude-opus-5-thinking-max")?.variant?.id).toBe("thinking");
+    expect(resolveModelPricingDetailed("gemini-3.6-flash-high")?.entry.id).toBe("gemini-3.6-flash");
+    expect(resolveModelPricing("kimi-k3")?.displayName).toBe("Kimi K3");
+    expect(getModelPricingCatalog().plans.some((plan) => plan.id === "start")).toBe(true);
   });
 
   it("auto-resolves thinking effort slugs for models with thinking variants", () => {
@@ -249,13 +258,27 @@ describe("aggregateTheoreticalByModel", () => {
     expect(result.usedModelIds).toContain("gpt-5.3-codex");
   });
 
-  it("computes delta between actual and theoretical spend", () => {
+  it("computes delta between reported API cost and catalog theoretical", () => {
     const result = aggregateTheoreticalByModel([baseEvent], "30d", resetAt, now);
     const row = result.theoreticalByModel["gpt-5.3-codex"];
     expect(row).toBeDefined();
-    expect(row!.actualSpendCents).toBe(120);
+    expect(row!.reportedCostCents).toBe(120);
     expect(row!.theoreticalCents).toBeGreaterThan(0);
-    expect(row!.deltaCents).toBe(row!.actualSpendCents - row!.theoreticalCents);
+    expect(row!.deltaCents).toBe(row!.reportedCostCents - row!.theoreticalCents);
+  });
+
+  it("prefers tokenCostCents for included usage (Cursor Included Usage page)", () => {
+    const included: UsageEvent = {
+      ...baseEvent,
+      kind: "Included",
+      spendCents: 16,
+      tokenCostCents: 32.75,
+    };
+    expect(eventReportedUsageCostCents(included)).toBeCloseTo(32.75, 2);
+    const result = aggregateTheoreticalByModel([included], "30d", resetAt, now);
+    const row = result.theoreticalByModel["gpt-5.3-codex"];
+    expect(row!.reportedCostCents).toBeCloseTo(32.75, 2);
+    expect(row!.theoreticalCents).toBeGreaterThan(0);
   });
 
   it("counts only on-demand charges as actual when quota-aware", () => {
@@ -271,13 +294,19 @@ describe("aggregateTheoreticalByModel", () => {
     const row = result.theoreticalByModel["gpt-5.3-codex"];
     expect(row).toBeDefined();
     expect(row!.actualSpendCents).toBe(80);
+    expect(row!.reportedCostCents).toBe(80 + 110);
     expect(row!.theoreticalCents).toBeGreaterThan(0);
-    expect(row!.deltaCents).toBe(80 - row!.theoreticalCents);
+    expect(row!.deltaCents).toBe(row!.reportedCostCents - row!.theoreticalCents);
     expect(row!.deltaPercent).not.toBeNull();
   });
 
-  it("omits delta percent when there is no billable actual spend", () => {
-    const included: UsageEvent = { ...baseEvent, kind: "Included", spendCents: 500 };
+  it("omits delta percent when reported cost is zero", () => {
+    const included: UsageEvent = {
+      ...baseEvent,
+      kind: "Included",
+      spendCents: 0,
+      tokenCostCents: 0,
+    };
     const result = aggregateTheoreticalByModel(
       [included],
       "30d",

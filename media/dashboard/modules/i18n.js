@@ -62,6 +62,8 @@ const STATIC_I18N = {
   "col.tokens": "colTokens",
   "col.spend": "colSpend",
   "col.theoretical": "colTheoretical",
+  "col.poolShare": "colPoolShare",
+  "col.poolQuota": "colPoolQuota",
   "col.date": "colDate",
   "col.type": "colType",
   "pool.pace.title": "poolDailyPace",

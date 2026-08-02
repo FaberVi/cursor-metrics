@@ -7,6 +7,7 @@ const GLOBAL_STATE_KEY = "dashboardUiPreferences";
 
 export type DashboardUiPreferences = {
   range?: UsageDuration;
+  breakdownRange?: UsageDuration;
   usageFilter?: UsageFilter;
   metric?: ChartMetric;
   pricingPinnedIds?: string[];
@@ -36,6 +37,7 @@ function sanitize(raw: unknown): DashboardUiPreferences {
   const o = raw as Record<string, unknown>;
   const prefs: DashboardUiPreferences = {};
   if (isUsageDuration(o.range)) prefs.range = o.range;
+  if (isUsageDuration(o.breakdownRange)) prefs.breakdownRange = o.breakdownRange;
   if (isUsageFilter(o.usageFilter)) prefs.usageFilter = o.usageFilter;
   if (isChartMetric(o.metric)) prefs.metric = o.metric;
   const pinned = sanitizePinnedIds(o.pricingPinnedIds);

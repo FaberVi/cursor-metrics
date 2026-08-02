@@ -1,4 +1,4 @@
-import { local, persistLocal, switchMainTab, ui } from "./core.js";
+import { local, persistLocal, switchMainTab, ui, vscode } from "./core.js";
 import {
   estimateComponentCost,
   resolveModelPricing,
@@ -36,6 +36,12 @@ export function navigateToModelPricing(modelId) {
 }
 
 export function bindPricingHandlers() {
+  if (ui.pricingRefreshBtn) {
+    ui.pricingRefreshBtn.addEventListener("click", () => {
+      if (ui.pricingSyncStatus) ui.pricingSyncStatus.textContent = "";
+      vscode.postMessage({ type: "refreshPricingCatalog" });
+    });
+  }
   if (ui.pricingSearch) {
     ui.pricingSearch.addEventListener("input", () => {
       local.pricingSearch = ui.pricingSearch.value;

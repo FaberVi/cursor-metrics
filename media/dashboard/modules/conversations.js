@@ -22,16 +22,20 @@ import {
   formatCents,
   formatTokens,
   eventRequestCount,
+  eventTokenCount,
+  getDurationCutoff,
+  rangeNow,
 } from "./format.js";
 import { t } from "./i18n.js";
-import { renderTable, showEventDetail, getSortedEvents } from "./tables.js";
+import { renderTable, showEventDetail, getSortedEvents, findEventByKey } from "./tables.js";
 
 const NO_CONVERSATION_KEY = "__none__";
 
 export function getSortedConversations() {
   if (!refs.state) return [];
+  const cutoff = getDurationCutoff(local.range, refs.state.resetsAt, rangeNow());
   const rows = aggregateConversations(refs.state.events, {
-    cutoff: 0,
+    cutoff,
     usageFilter: local.usageFilter,
     titles: refs.state.conversationTitles ?? {},
     previewTitles: local.conversationPreview,
@@ -207,7 +211,7 @@ export function applyConversationMessages(conversationId, messages, error) {
 export function showConversationDetail(row) {
   if (!ui.eventDetailOverlay || !ui.eventDetailBody || !row) return;
   refs.selectedConversationId = row.conversationId ?? NO_CONVERSATION_KEY;
-  refs.selectedEventIdx = null;
+  refs.selectedEventKey = null;
   renderConversationsTable();
 
   ui.eventDetailTitle.textContent = row.label;
@@ -217,15 +221,14 @@ export function showConversationDetail(row) {
     : t("noConversation");
   ui.eventDetailSubtitle.textContent = idLine + " \u00b7 " + rangeText;
 
-  const allEvents = getSortedEvents();
   const eventRows = row.events.map((event) => {
-    const idx = allEvents.indexOf(event);
     const color = colorForModel(event.model || "default");
-    return '<tr class="conversation-event-row" data-detail-event-idx="' + idx + '" style="box-shadow:inset 3px 0 0 ' + color + ';">' +
+    const eventKey = event.eventKey ?? "";
+    return '<tr class="conversation-event-row" data-detail-event-key="' + escapeHtml(eventKey) + '" style="box-shadow:inset 3px 0 0 ' + color + ';">' +
       "<td>" + formatDateTime(event.timestamp) + "</td>" +
       "<td>" + escapeHtml(formatModelLabel(event.model)) + "</td>" +
       "<td>" + escapeHtml(event.kind) + "</td>" +
-      '<td class="num">' + formatTokens(event.totalTokens || 0) + "</td>" +
+      '<td class="num">' + formatTokens(eventTokenCount(event)) + "</td>" +
       '<td class="num">' + formatRequests(eventRequestCount(event)) + "</td>" +
       '<td class="num">' + formatCents(Math.round(eventSpendDollars(event) * 100)) + "</td>" +
     "</tr>";
@@ -284,8 +287,15 @@ export function syncDashboardPrefs() {
 export function updateArchiveNote() {
   if (!ui.archiveNote || !refs.state) return;
   const count = refs.state.storedEventCount || 0;
+  const parts = [];
   if (count > 0) {
-    ui.archiveNote.textContent = t("archiveNote").replace("{count}", count.toLocaleString());
+    parts.push(t("archiveNote").replace("{count}", count.toLocaleString()));
+  }
+  if (refs.state.eventsComplete === false) {
+    parts.push(t("archivePartialSync"));
+  }
+  if (parts.length > 0) {
+    ui.archiveNote.textContent = parts.join(" · ");
     ui.archiveNote.classList.remove("hidden");
   } else {
     ui.archiveNote.classList.add("hidden");
@@ -350,12 +360,12 @@ export function bindConversationHandlers(vscode) {
   });
 
   ui.eventDetailBody?.addEventListener("click", (e) => {
-    const tr = e.target.closest("tr[data-detail-event-idx]");
+    const tr = e.target.closest("tr[data-detail-event-key]");
     if (!tr) return;
-    const idx = Number(tr.dataset.detailEventIdx);
-    const events = getSortedEvents();
-    if (!Number.isFinite(idx) || idx < 0 || idx >= events.length) return;
-    showEventDetail(events[idx], idx);
+    const eventKey = tr.dataset.detailEventKey;
+    const event = findEventByKey(getSortedEvents(), eventKey);
+    if (!event) return;
+    showEventDetail(event);
   });
 
   ui.conversationsHead?.addEventListener("click", (e) => {

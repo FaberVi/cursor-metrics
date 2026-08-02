@@ -5,6 +5,7 @@ import { join } from "path";
 import {
   enrichUsageFromEvents,
   eventRequestCount,
+  eventTokenCount,
   extractUsageFromSummary,
   extractUsageTotals,
   mergeTeamIncludedRequests,
@@ -286,6 +287,45 @@ describe("parseUsageEvent", () => {
         cacheReadTokens: 587_296,
       }),
     ).toBe(1);
+  });
+
+  it("heals archived rows that stored token-scale values in totalTokens", () => {
+    expect(
+      eventTokenCount({
+        totalTokens: 58_077_533,
+        inputTokens: 4089,
+        outputTokens: 1442,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 587_296,
+      }),
+    ).toBe(592_827);
+    expect(
+      eventTokenCount({
+        totalTokens: 29_648_584,
+        inputTokens: 1000,
+        outputTokens: 500,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      }),
+    ).toBe(1500);
+    expect(
+      eventTokenCount({
+        totalTokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      }),
+    ).toBe(0);
+    expect(
+      eventTokenCount({
+        totalTokens: 12_500,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      }),
+    ).toBe(12_500);
   });
 
   it("keeps fractional counts on legacy request-metered plans", () => {

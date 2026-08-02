@@ -34,6 +34,8 @@ export type UsageEvent = {
   isHeadless: boolean;
   isChargeable: boolean;
   conversationId: string | null;
+  /** Stable identity for UI selection; set when events are sent to the dashboard webview. */
+  eventKey?: string;
 };
 
 export type ConversationSummary = {

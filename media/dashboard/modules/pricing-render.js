@@ -173,7 +173,7 @@ function renderModelRow(entry, usageMap, used) {
   const usageCells = usage
     ? '<td class="num">' + formatTokens(usage.totalTokens) + "</td>" +
       '<td class="num">' + formatBillableSpendCents(usage.actualSpendCents) + "</td>" +
-      '<td class="num">' + formatCents(usage.theoreticalCents) + "</td>" +
+      '<td class="num">' + formatCents(usage.reportedCostCents) + "</td>" +
       '<td class="num ' + deltaClass(usage.deltaPercent) + '">' + formatDeltaPercent(usage.deltaPercent) + "</td>"
     : '<td class="num muted">—</td><td class="num muted">—</td><td class="num muted">—</td><td class="num muted">—</td>';
 
@@ -212,14 +212,44 @@ function renderModelRow(entry, usageMap, used) {
 export function renderPricingMeta() {
   const pricing = getPricingState();
   if (!pricing || !ui.pricingUpdated || !ui.pricingSource) return;
-  ui.pricingUpdated.textContent = t("pricingUpdated") + " " + pricing.catalog.lastUpdated;
+  let updatedText = t("pricingUpdated") + " " + pricing.catalog.lastUpdated;
+  if (refs.state?.pricingCatalogSyncedAt) {
+    const syncedDate = new Date(refs.state.pricingCatalogSyncedAt).toISOString().slice(0, 10);
+    updatedText += " · " + t("pricingSyncedBadge");
+    if (ui.pricingSyncBadge) {
+      ui.pricingSyncBadge.textContent = t("pricingSyncedBadge") + " " + syncedDate;
+      ui.pricingSyncBadge.classList.remove("hidden");
+    }
+  } else if (ui.pricingSyncBadge) {
+    ui.pricingSyncBadge.classList.add("hidden");
+    ui.pricingSyncBadge.textContent = "";
+  }
+  ui.pricingUpdated.textContent = updatedText;
   ui.pricingSource.href = pricing.catalog.sourceUrl;
+}
+
+function renderPricingRuntimeAlert() {
+  if (!ui.pricingRuntimeAlert) return;
+  const models = refs.state?.pricingRuntimeOnlyModels ?? [];
+  if (!models.length) {
+    ui.pricingRuntimeAlert.classList.add("hidden");
+    ui.pricingRuntimeAlert.innerHTML = "";
+    return;
+  }
+
+  const names = models.map((model) => escapeHtml(model.displayName)).join(", ");
+  ui.pricingRuntimeAlert.classList.remove("hidden");
+  ui.pricingRuntimeAlert.innerHTML =
+    "<strong>" + escapeHtml(t("pricingRuntimeOnlyTitle")) + "</strong>" +
+    "<p>" + escapeHtml(t("pricingRuntimeOnlyBody")) + "</p>" +
+    '<p class="pricing-runtime-only-models">' + names + "</p>";
 }
 
 export function renderPricing() {
   if (!ui.pricingBody || !ui.pricingHead) return;
   const pricing = getPricingState();
   renderPricingMeta();
+  renderPricingRuntimeAlert();
 
   if (ui.pricingSearch && ui.pricingSearch.value !== local.pricingSearch) {
     ui.pricingSearch.value = local.pricingSearch;

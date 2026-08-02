@@ -32,6 +32,10 @@
         "title": "Cursor Usage (Community): Refresh"
       },
       {
+        "command": "cursor-usage.refreshPricingCatalog",
+        "title": "Cursor Usage (Community): Refresh Pricing Catalog"
+      },
+      {
         "command": "cursor-usage.openDashboard",
         "title": "Cursor Usage (Community): Open Dashboard"
       }
@@ -73,13 +77,13 @@
             "billingCycle"
           ],
           "enumItemLabels": [
-            "Last 24 hours",
+            "Today",
             "Last 7 days",
             "Last 30 days",
             "Current Billing Cycle"
           ],
           "enumDescriptions": [
-            "Last 24 hours",
+            "Current day (UTC)",
             "Last 7 days",
             "Last 30 days",
             "Current billing cycle (falls back to Last 30 Days when reset metadata is unavailable)"

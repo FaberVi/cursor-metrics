@@ -1,7 +1,7 @@
 ﻿import { DAY_MS, local, refs, ui } from "./core.js";
 import { getDateLocale, t } from "./i18n.js";
 import { getBillingCycleCutoff } from "../../../src/cursor-api-utils.ts";
-import { eventRequestCount } from "../../../src/cursor-usage-parsing.ts";
+import { eventRequestCount, eventTokenCount } from "../../../src/cursor-usage-parsing.ts";
 
 export function startOfUtcDay(ts) {
   const d = new Date(ts);
@@ -12,7 +12,10 @@ export function getDurationCutoff(range, resetAtIso, now) {
   if (range === "billingCycle") {
     return getBillingCycleCutoff(resetAtIso, now);
   }
-  const map = { "1d": 1, "7d": 7, "30d": 30 };
+  if (range === "1d") {
+    return startOfUtcDay(now);
+  }
+  const map = { "7d": 7, "30d": 30 };
   return now - (map[range] || 30) * DAY_MS;
 }
 
@@ -166,7 +169,7 @@ export function formatRequests(n) {
   return n.toFixed(1);
 }
 
-export { eventRequestCount };
+export { eventRequestCount, eventTokenCount };
 
 export function isOnDemandEvent(event) {
   return event.kind === "On-Demand";
@@ -195,6 +198,41 @@ export function chartSpendDollars(event) {
 export function stateGeneratedAt() {
   const generatedAt = refs.state?.generatedAt;
   return Number.isFinite(generatedAt) && generatedAt > 0 ? generatedAt : Date.now();
+}
+
+/** Live "now" for range filters: never before last data refresh. */
+export function rangeNow() {
+  return Math.max(Date.now(), stateGeneratedAt());
+}
+
+export function formatRangePeriod(range, resetAtIso, now = rangeNow()) {
+  if (range === "1d") return t("range1d");
+  const cutoff = getDurationCutoff(range, resetAtIso, now);
+  const start = new Date(startOfUtcDay(cutoff));
+  const end = new Date(startOfUtcDay(now));
+  const locale = getDateLocale();
+  const fmt = (d) =>
+    d.toLocaleDateString(locale, { month: "short", day: "numeric", timeZone: "UTC" });
+  if (range === "billingCycle" && resetAtIso) {
+    const reset = new Date(resetAtIso);
+    if (!Number.isNaN(reset.getTime())) {
+      const cycleEnd = new Date(startOfUtcDay(reset.getTime() - DAY_MS));
+      if (cycleEnd > end) return fmt(start) + " – " + fmt(cycleEnd);
+    }
+  }
+  return fmt(start) + " – " + fmt(end);
+}
+
+export function metricLabel(metric) {
+  if (metric === "spend") return t("metricSpend");
+  if (metric === "requests") return t("metricRequests");
+  return t("metricTokens");
+}
+
+export function formatChartMetricValue(value, metric) {
+  if (metric === "spend") return formatDollars(value);
+  if (metric === "requests") return formatRequests(value);
+  return formatTokens(value);
 }
 
 export function eventRequestsText(event) {
@@ -235,8 +273,12 @@ export function formatResetCountdown(iso) {
 }
 
 export function setActiveRangeButton() {
-  ui.rangeSelector.querySelectorAll("button").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.range === local.range);
+  document.querySelectorAll("[data-range-selector]").forEach((selector) => {
+    const scope = selector.dataset.rangeScope || "chart";
+    const activeRange = scope === "breakdown" ? local.breakdownRange : local.range;
+    selector.querySelectorAll("button[data-range]").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.range === activeRange);
+    });
   });
 }
 
@@ -254,9 +296,17 @@ export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
-export function rangeLabel() {
-  if (local.range === "1d") return t("range1d");
-  if (local.range === "7d") return t("range7d");
-  if (local.range === "30d") return t("range30d");
+export function rangeLabelFor(range) {
+  if (range === "1d") return t("range1d");
+  if (range === "7d") return t("range7d");
+  if (range === "30d") return t("range30d");
   return t("rangeBilling");
+}
+
+export function rangeLabel() {
+  return rangeLabelFor(local.range);
+}
+
+export function breakdownRangeLabel() {
+  return rangeLabelFor(local.breakdownRange);
 }

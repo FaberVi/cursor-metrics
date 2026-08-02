@@ -1,8 +1,9 @@
-import { refs, setSelectedEventIdx, TOKEN_COLORS, ui } from "./core.js";
+import { refs, setSelectedEventKey, TOKEN_COLORS, ui } from "./core.js";
 import {
   escapeHtml,
-  eventRequestsText,
   eventRequestCount,
+  eventRequestsText,
+  eventTokenCount,
   eventSpendDollars,
   eventSpendText,
   formatCents,
@@ -24,7 +25,7 @@ function renderTokenBreakdown(event) {
   const output = tokenField(event, "outputTokens");
   const cacheWrite = tokenField(event, "cacheWriteTokens");
   const cacheRead = tokenField(event, "cacheReadTokens");
-  const total = event.totalTokens || input + output + cacheWrite + cacheRead;
+  const total = eventTokenCount(event);
   const segments = [
     { key: "input", label: t("pricingInput"), value: input, color: TOKEN_COLORS.input },
     { key: "output", label: t("pricingOutput"), value: output, color: TOKEN_COLORS.output },
@@ -57,7 +58,7 @@ function renderEventDetailMetrics(event) {
   const output = tokenField(event, "outputTokens");
   const cacheWrite = tokenField(event, "cacheWriteTokens");
   const cacheRead = tokenField(event, "cacheReadTokens");
-  const total = event.totalTokens || 0;
+  const total = eventTokenCount(event);
   const requests = eventRequestCount(event);
   const spend = eventSpendDollars(event);
   const spendCents = Math.round(spend * 100);
@@ -186,9 +187,9 @@ function renderEventDetailFlags(event) {
   ).join("");
 }
 
-export function showEventDetail(event, eventIdx) {
-  if (!ui.eventDetailOverlay || !ui.eventDetailBody) return;
-  setSelectedEventIdx(eventIdx);
+export function showEventDetail(event) {
+  if (!ui.eventDetailOverlay || !ui.eventDetailBody || !event) return;
+  setSelectedEventKey(event.eventKey ?? null);
   refs.selectedConversationId = null;
   renderTable();
 
@@ -198,7 +199,7 @@ export function showEventDetail(event, eventIdx) {
 
   ui.eventDetailBody.innerHTML =
     '<div class="event-detail-grid">' +
-      '<div class="event-detail-stat"><span class="label">Total tokens</span><span class="value">' + formatTokenCount(event.totalTokens || 0) + "</span></div>" +
+      '<div class="event-detail-stat"><span class="label">Total tokens</span><span class="value">' + formatTokenCount(eventTokenCount(event)) + "</span></div>" +
       '<div class="event-detail-stat"><span class="label">Requests</span><span class="value">' + eventRequestsText(event) + "</span></div>" +
       '<div class="event-detail-stat"><span class="label">Spend</span><span class="value">' + eventSpendText(event) + "</span></div>" +
     "</div>" +
@@ -218,7 +219,7 @@ export function showEventDetail(event, eventIdx) {
 
 export function closeEventDetail() {
   if (!ui.eventDetailOverlay) return;
-  setSelectedEventIdx(null);
+  setSelectedEventKey(null);
   refs.selectedConversationId = null;
   ui.eventDetailOverlay.classList.add("hidden");
   ui.eventDetailOverlay.setAttribute("aria-hidden", "true");

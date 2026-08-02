@@ -18,7 +18,9 @@ import {
   applyConversationMessages,
   bindConversationHandlers,
   closeConversationDetail,
+  getSortedConversations,
   renderConversationsTable,
+  showConversationDetail,
   updateArchiveNote,
   updatePreviewLoading,
   updatePreviewStatus,
@@ -33,14 +35,39 @@ import {
   applyTeamMemberConstraints,
   closeEventDetail,
   exportCsv,
+  findEventByKey,
   getSortedEvents,
   renderBreakdown,
   renderTable,
   showError,
+  showWarnings,
   showEventDetail,
 } from "./tables.js";
 import { applyStaticTranslations, t } from "./i18n.js";
 import { bindPricingHandlers, navigateToModelPricing, renderPricing } from "./pricing.js";
+
+const NO_CONVERSATION_KEY = "__none__";
+
+function syncActivityDetail() {
+  if (!ui.eventDetailOverlay || ui.eventDetailOverlay.classList.contains("hidden")) return;
+  if (refs.selectedEventKey) {
+    const event = findEventByKey(getSortedEvents(), refs.selectedEventKey);
+    if (event) {
+      showEventDetail(event);
+      return;
+    }
+  }
+  if (refs.selectedConversationId != null) {
+    const row = getSortedConversations().find(
+      (r) => (r.conversationId ?? NO_CONVERSATION_KEY) === refs.selectedConversationId,
+    );
+    if (row) {
+      showConversationDetail(row);
+      return;
+    }
+  }
+  closeActivityDetail();
+}
 
 function closeActivityDetail() {
   closeEventDetail();
@@ -49,22 +76,44 @@ function closeActivityDetail() {
 
 function applyUiPreferences(prefs) {
   if (!prefs || typeof prefs !== "object") return;
-  if (prefs.range) local.range = prefs.range;
-  if (prefs.usageFilter) local.usageFilter = prefs.usageFilter;
-  if (Array.isArray(prefs.pricingPinnedIds)) {
-    local.pricingPinnedIds = prefs.pricingPinnedIds.filter((id) => typeof id === "string" && id.length > 0);
+  let changed = false;
+  if (prefs.range && prefs.range !== local.range) {
+    local.range = prefs.range;
+    changed = true;
   }
+  if (prefs.breakdownRange && prefs.breakdownRange !== local.breakdownRange) {
+    local.breakdownRange = prefs.breakdownRange;
+    changed = true;
+  }
+  if (prefs.usageFilter && prefs.usageFilter !== local.usageFilter) {
+    local.usageFilter = prefs.usageFilter;
+    changed = true;
+  }
+  if (prefs.metric === "spend" || prefs.metric === "tokens" || prefs.metric === "requests") {
+    if (prefs.metric !== local.metric) {
+      local.metric = prefs.metric;
+      changed = true;
+    }
+  }
+  if (Array.isArray(prefs.pricingPinnedIds)) {
+    const next = prefs.pricingPinnedIds.filter((id) => typeof id === "string" && id.length > 0);
+    const prev = local.pricingPinnedIds.join("\0");
+    const serialized = next.join("\0");
+    if (prev !== serialized) {
+      local.pricingPinnedIds = next;
+      changed = true;
+    }
+  }
+  if (!changed) return;
   persistLocal();
   if (refs.state) renderAll();
 }
 
-function rerenderActiveMainTab() {
-  const tab = local.mainTab;
-  if (tab === "usage") {
-    renderChart();
+function rerenderCharts() {
+  renderChart();
+  renderPoolChart();
+  if (local.mainTab === "usage") {
     requestAnimationFrame(() => refs.chart?.resize());
-  } else if (tab === "pools") {
-    renderPoolChart();
   }
 }
 
@@ -75,45 +124,94 @@ function renderAll() {
     persistLocal();
   }
   applyStaticTranslations();
-  closeActivityDetail();
+  syncActivityDetail();
   applySectionState();
   applyMainTab();
   setActiveRangeButton();
   if (ui.usageFilter) ui.usageFilter.value = local.usageFilter;
+  if (ui.chartMetricFilter) ui.chartMetricFilter.value = local.metric;
   applyTeamMemberConstraints();
   renderSummaryCards();
-  renderBreakdown();
   renderPricing();
   renderTable();
   renderConversationsTable();
   updateArchiveNote();
   applyActivityTab();
   showError(refs.state.error);
+  showWarnings(refs.state.warnings);
   ui.lastUpdated.textContent = formatUpdatedAt(refs.state.generatedAt);
-  rerenderActiveMainTab();
+  rerenderCharts();
+  renderBreakdown();
 }
 
-ui.rangeSelector.addEventListener("click", (e) => {
-  const btn = e.target.closest("button[data-range]");
-  if (!btn) return;
-  local.range = btn.dataset.range;
+function isUsageDurationRange(nextRange) {
+  return nextRange === "1d" || nextRange === "7d" || nextRange === "30d" || nextRange === "billingCycle";
+}
+
+function applyChartRangeChange(nextRange) {
+  if (!isUsageDurationRange(nextRange)) return;
+  if (nextRange === local.range) return;
+  local.range = nextRange;
   resetEventsPage();
   persistLocal();
   persistGlobalUi({ range: local.range });
   syncDashboardPrefs();
-  renderAll();
+  vscode.postMessage({ type: "syncRangeToSettings", range: local.range });
+  setActiveRangeButton();
+  renderSummaryCards();
+  renderPricing();
+  renderTable();
+  renderConversationsTable();
+  rerenderCharts();
+}
+
+function applyBreakdownRangeChange(nextRange) {
+  if (!isUsageDurationRange(nextRange)) return;
+  if (nextRange === local.breakdownRange) return;
+  local.breakdownRange = nextRange;
+  persistLocal();
+  persistGlobalUi({ breakdownRange: local.breakdownRange });
+  setActiveRangeButton();
+  renderBreakdown();
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-range-selector] button[data-range]");
+  if (!btn) return;
+  const selector = btn.closest("[data-range-selector]");
+  const scope = selector?.dataset.rangeScope || "chart";
+  const nextRange = btn.dataset.range;
+  if (scope === "breakdown") {
+    applyBreakdownRangeChange(nextRange);
+  } else {
+    applyChartRangeChange(nextRange);
+  }
 });
 
+if (ui.chartMetricFilter) {
+  ui.chartMetricFilter.addEventListener("change", () => {
+    const next = ui.chartMetricFilter.value;
+    if (next !== "spend" && next !== "tokens" && next !== "requests") return;
+    if (next === local.metric) return;
+    local.metric = next;
+    persistLocal();
+    persistGlobalUi({ metric: local.metric });
+    renderChart();
+  });
+}
+
 ui.usageFilter?.addEventListener("change", () => {
-  local.usageFilter = ui.usageFilter.value;
+  const next = ui.usageFilter.value;
+  if (next !== "all" && next !== "included" && next !== "ondemand") return;
+  local.usageFilter = next;
   resetEventsPage();
   persistLocal();
   persistGlobalUi({ usageFilter: local.usageFilter });
   syncDashboardPrefs();
-  renderChart();
-  renderBreakdown();
   renderPricing();
   renderTable();
+  renderChart();
+  renderBreakdown();
 });
 
 ui.tableHead.addEventListener("click", (e) => {
@@ -133,12 +231,12 @@ ui.tableHead.addEventListener("click", (e) => {
 });
 
 ui.tableBody.addEventListener("click", (e) => {
-  const row = e.target.closest("tr[data-event-idx]");
+  const row = e.target.closest("tr[data-event-key]");
   if (!row) return;
-  const idx = Number(row.dataset.eventIdx);
-  const events = getSortedEvents();
-  if (!Number.isFinite(idx) || idx < 0 || idx >= events.length) return;
-  showEventDetail(events[idx], idx);
+  const eventKey = row.dataset.eventKey;
+  const event = findEventByKey(getSortedEvents(), eventKey);
+  if (!event) return;
+  showEventDetail(event);
 });
 
 if (ui.breakdownHead) {
@@ -225,7 +323,7 @@ document.querySelectorAll(".dashboard-tab[data-main-tab]").forEach((btn) => {
     const tab = btn.dataset.mainTab;
     if (!tab || tab === local.mainTab) return;
     switchMainTab(tab);
-    rerenderActiveMainTab();
+    rerenderCharts();
   });
 });
 
@@ -248,6 +346,13 @@ window.addEventListener("message", (event) => {
   if (!msg || typeof msg !== "object") return;
   if (msg.type === "uiPreferences") {
     applyUiPreferences(msg.preferences);
+  } else if (msg.type === "rangePreference" && typeof msg.range === "string") {
+    if (msg.range !== "1d" && msg.range !== "7d" && msg.range !== "30d" && msg.range !== "billingCycle") return;
+    local.range = msg.range;
+    persistLocal();
+    persistGlobalUi({ range: local.range });
+    syncDashboardPrefs();
+    if (refs.state) renderAll();
   } else if (msg.type === "init" && (msg.locale === "en" || msg.locale === "it")) {
     local.locale = msg.locale;
     persistLocal();
@@ -285,6 +390,22 @@ window.addEventListener("message", (event) => {
   } else if (msg.type === "loading") {
     ui.refreshBtn.disabled = !!msg.on;
     ui.refreshBtn.textContent = msg.on ? t("refreshing") : t("refresh");
+  } else if (msg.type === "pricingSyncLoading") {
+    if (ui.pricingRefreshBtn) {
+      ui.pricingRefreshBtn.disabled = !!msg.on;
+      ui.pricingRefreshBtn.textContent = msg.on ? t("pricingRefreshing") : t("pricingRefreshFromCursor");
+    }
+  } else if (msg.type === "pricingSyncStatus") {
+    if (!ui.pricingSyncStatus) return;
+    if (msg.ok) {
+      ui.pricingSyncStatus.textContent = t("pricingSyncSuccess")
+        .replace("{updated}", String(msg.updated ?? 0))
+        .replace("{added}", String(msg.added ?? 0));
+      ui.pricingSyncStatus.classList.remove("pricing-sync-error");
+    } else {
+      ui.pricingSyncStatus.textContent = t("pricingSyncFailed").replace("{error}", msg.error || "unknown");
+      ui.pricingSyncStatus.classList.add("pricing-sync-error");
+    }
   }
 });
 

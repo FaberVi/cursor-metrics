@@ -11,6 +11,15 @@ export type DashboardAssetUris = {
   chartUri: vscode.Uri;
 };
 
+function renderRangeSelector(id: string, scope: "chart" | "breakdown"): string {
+  return `<div class="range-selector" id="${id}" data-range-selector data-range-scope="${scope}" role="tablist">
+      <button data-range="1d" type="button" data-i18n="range.1d">Today</button>
+      <button data-range="7d" type="button" data-i18n="range.7d">Last 7 days</button>
+      <button data-range="30d" type="button" data-i18n="range.30d">Last 30 days</button>
+      <button data-range="billingCycle" type="button" data-i18n="range.billingCycle">Current Billing Cycle</button>
+    </div>`;
+}
+
 export function renderDashboardHtml(
   webview: vscode.Webview,
   assets: DashboardAssetUris,
@@ -55,15 +64,11 @@ export function renderDashboardHtml(
   <section class="summary-cards" id="summary-cards"></section>
 
   <section class="controls">
-    <div class="range-selector" id="range-selector" role="tablist">
-      <button data-range="1d" type="button" data-i18n="range.1d">Last 24 hours</button>
-      <button data-range="7d" type="button" data-i18n="range.7d">Last 7 days</button>
-      <button data-range="30d" type="button" data-i18n="range.30d">Last 30 days</button>
-      <button data-range="billingCycle" type="button" data-i18n="range.billingCycle">Current Billing Cycle</button>
-    </div>
+    ${renderRangeSelector("range-selector", "chart")}
   </section>
 
   <div id="error-banner" class="error-banner hidden"></div>
+  <div id="warning-banner" class="warning-banner hidden"></div>
 
   <nav class="dashboard-tabs" role="tablist" aria-label="Dashboard views">
     <button type="button" class="dashboard-tab active" data-main-tab="usage" role="tab" aria-selected="true" aria-controls="tab-panel-usage" data-i18n="mainTab.usage">Usage</button>
@@ -92,6 +97,18 @@ function renderUsageTabPanel(): string {
         <h2 data-i18n="section.usage.title">Your Usage</h2>
         <p class="muted" data-i18n="section.usage.desc">Per-day token usage over the selected range</p>
       </div>
+      <div class="chart-header-aside breakdown-header-aside">
+        <div class="breakdown-filters">
+          <label><span data-i18n="filter.metric.label">Metric:</span>
+            <select id="chart-metric-filter">
+              <option value="tokens" data-i18n="metric.tokens">Tokens</option>
+              <option value="spend" data-i18n="metric.spend">Spend</option>
+              <option value="requests" data-i18n="metric.requests">Requests</option>
+            </select>
+          </label>
+        </div>
+        <span class="muted small" id="chart-range-label"></span>
+      </div>
     </div>
     <div id="section-body-usage" class="section-body">
       <div class="chart-wrapper">
@@ -106,18 +123,21 @@ function renderUsageTabPanel(): string {
       <div class="section-title-block">
         <h2 data-i18n="section.breakdown.title">Usage by Model</h2>
       </div>
-      <div class="breakdown-header-aside">
-        <div class="breakdown-filters">
-          <label><span data-i18n="filter.usage.label">Usage:</span>
-            <select id="usage-filter">
-              <option value="all" data-i18n="filter.all">All</option>
-              <option value="included" data-i18n="filter.included">Included</option>
-              <option value="ondemand" data-i18n="filter.ondemand">On-Demand</option>
-            </select>
-          </label>
-        </div>
-        <span class="muted small" id="breakdown-range-label"></span>
+    </div>
+    <div class="breakdown-toolbar">
+      ${renderRangeSelector("breakdown-range-selector", "breakdown")}
+    </div>
+    <div class="breakdown-filter-row">
+      <div class="breakdown-filters">
+        <label><span data-i18n="filter.usage.label">Usage:</span>
+          <select id="usage-filter">
+            <option value="all" data-i18n="filter.all">All</option>
+            <option value="included" data-i18n="filter.included">Included</option>
+            <option value="ondemand" data-i18n="filter.ondemand">On-Demand</option>
+          </select>
+        </label>
       </div>
+      <span class="muted small" id="breakdown-range-label"></span>
     </div>
     <div id="section-body-breakdown" class="section-body">
       <div class="table-scroll">
@@ -128,13 +148,16 @@ function renderUsageTabPanel(): string {
               <th data-sort="requests" class="sortable num" data-i18n="col.requests">Requests</th>
               <th data-sort="totalTokens" class="sortable num" data-i18n="col.tokens">Tokens</th>
               <th data-sort="spendCents" class="sortable num" data-i18n="col.spend">Spend</th>
-              <th data-sort="theoreticalCents" class="sortable num" data-i18n="col.theoretical">Theoretical</th>
+              <th data-sort="reportedCostCents" class="sortable num" data-i18n="col.theoretical">Token cost</th>
+              <th data-sort="poolSharePercent" class="sortable num" data-i18n="col.poolShare" title="% of pool">% of pool</th>
+              <th data-sort="quotaPointsPercent" class="sortable num" data-i18n="col.poolQuota" title="Quota points">Quota points</th>
             </tr>
           </thead>
           <tbody></tbody>
           <tfoot></tfoot>
         </table>
       </div>
+      <p id="breakdown-pool-note" class="muted small hidden"></p>
     </div>
   </section>
   </div>`;
@@ -176,11 +199,15 @@ function renderPricingTabPanel(): string {
       </div>
       <div class="pricing-header-meta">
         <span id="pricing-updated" class="muted small"></span>
+        <span id="pricing-sync-badge" class="pricing-sync-badge hidden"></span>
+        <button type="button" id="pricing-refresh-btn" class="pricing-refresh-btn" data-i18n="pricingRefreshFromCursor">Refresh from Cursor</button>
         <a id="pricing-source" class="pricing-source-link" href="https://cursor.com/docs/models-and-pricing" target="_blank" rel="noopener noreferrer" data-i18n="pricingSource">Official source</a>
+        <span id="pricing-sync-status" class="muted small pricing-sync-status" role="status" aria-live="polite"></span>
         <span class="muted small" id="pricing-range-label"></span>
       </div>
     </div>
     <div id="section-body-pricing" class="section-body">
+      <div id="pricing-runtime-alert" class="pricing-runtime-alert hidden" role="alert" aria-live="polite"></div>
       <div class="pricing-pool-banner">
         <div class="pricing-pool-card">
           <strong data-i18n="pricingPoolFirstParty">First-party models</strong>
