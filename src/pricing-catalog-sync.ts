@@ -62,8 +62,7 @@ function parseMarkdownTable(section: string): string[][] {
   return rows;
 }
 
-export function parseMarkdownPricingTable(markdown: string): ParsedPricingRow[] {
-  const section = extractSection(markdown, "Model pricing");
+function parsePricingRowsFromSection(section: string): ParsedPricingRow[] {
   const rows = parseMarkdownTable(section);
   if (rows.length < 2) return [];
 
@@ -97,6 +96,35 @@ export function parseMarkdownPricingTable(markdown: string): ParsedPricingRow[] 
     });
   }
   return parsed;
+}
+
+export function parseMarkdownPricingTable(markdown: string): ParsedPricingRow[] {
+  return parsePricingRowsFromSection(extractSection(markdown, "Model pricing"));
+}
+
+/** Base first-party models from `## Cursor Models` (skips Fast variant rows). */
+export function parseCursorModelsTable(markdown: string): ParsedPricingRow[] {
+  const section =
+    markdown.match(/##\s+Cursor Models[\s\S]*?(?=\n##\s|\n###\s|$)/i)?.[0] ?? "";
+  return parsePricingRowsFromSection(section).filter(
+    (row) => !/\(\s*fast\s*\)/i.test(row.displayName),
+  );
+}
+
+function findExistingByDisplayName(
+  byDisplayName: Map<string, ModelPricingEntry>,
+  displayName: string,
+): ModelPricingEntry | undefined {
+  const normalized = normalizeDisplayName(displayName);
+  const direct = byDisplayName.get(normalized);
+  if (direct) return direct;
+  // Docs often omit the "Cursor " prefix (e.g. "Grok 4.6" vs "Cursor Grok 4.6").
+  const withCursor = byDisplayName.get(normalizeDisplayName(`Cursor ${displayName}`));
+  if (withCursor) return withCursor;
+  if (normalized.startsWith("cursor ")) {
+    return byDisplayName.get(normalized.slice("cursor ".length));
+  }
+  return undefined;
 }
 
 function parsePlanId(nameCell: string): string | null {
@@ -186,22 +214,26 @@ export function buildOverlayFromMarkdown(
   runtimeOnlyModelIds: string[];
 } {
   const warnings: string[] = [];
-  const rows = parseMarkdownPricingTable(markdown);
-  if (!rows.length) {
+  const otherRows = parseMarkdownPricingTable(markdown);
+  const cursorRows = parseCursorModelsTable(markdown);
+  if (!otherRows.length && !cursorRows.length) {
     warnings.push("No model pricing rows found in markdown");
   }
 
   const byDisplayName = buildDisplayNameIndex(baseCatalog);
   const overlayModels: ModelPricingEntry[] = [];
+  const seenIds = new Set<string>();
   let updated = 0;
   let added = 0;
 
-  for (const row of rows) {
-    const existing = byDisplayName.get(normalizeDisplayName(row.displayName));
+  const pushRow = (row: ParsedPricingRow, defaultPool: "firstParty" | "api") => {
+    const existing = findExistingByDisplayName(byDisplayName, row.displayName);
     if (existing) {
+      if (seenIds.has(existing.id)) return;
+      seenIds.add(existing.id);
       overlayModels.push({
         id: existing.id,
-        displayName: row.displayName,
+        displayName: existing.displayName,
         provider: row.provider || existing.provider,
         pool: existing.pool,
         rates: row.rates,
@@ -209,23 +241,32 @@ export function buildOverlayFromMarkdown(
         notes: row.notes,
       });
       updated += 1;
-      continue;
+      return;
     }
 
     const id = slugFromDisplayName(row.displayName);
+    if (seenIds.has(id)) return;
+    seenIds.add(id);
+    const displayName =
+      defaultPool === "firstParty" && !/^cursor\s+/i.test(row.displayName)
+        ? `Cursor ${row.displayName}`
+        : row.displayName;
     overlayModels.push({
       id,
-      displayName: row.displayName,
+      displayName,
       provider: row.provider,
-      pool: "api",
+      pool: defaultPool,
       rates: row.rates,
       hidden: row.hidden,
       notes: row.notes,
       aliases: [id],
     });
     added += 1;
-    warnings.push(`New model from docs not in bundled catalog: ${row.displayName}`);
-  }
+    warnings.push(`New model from docs not in bundled catalog: ${displayName}`);
+  };
+
+  for (const row of cursorRows) pushRow(row, "firstParty");
+  for (const row of otherRows) pushRow(row, "api");
 
   const plans = parseMarkdownPlans(markdown);
   const cursorTokenRatePerMillion = parseCursorTokenRate(markdown);

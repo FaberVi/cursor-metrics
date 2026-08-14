@@ -39,7 +39,7 @@ describe("model pricing catalog", () => {
     for (const entry of catalog.models) {
       expect(entry.rates.output ?? entry.rates.inputPlusCacheWrite).toBeDefined();
       if (entry.pool === "firstParty") {
-        expect(["auto", "composer-2.5", "grok-4.5"]).toContain(entry.id);
+        expect(["auto", "composer-2.5", "grok-4.5", "grok-4.6"]).toContain(entry.id);
       }
     }
   });
@@ -65,11 +65,31 @@ describe("resolveModelPricing", () => {
     expect(detailed?.variant?.priceImpact).toBe("sameRateMoreTokens");
   });
 
-  it("resolves cursor-grok-4.5-high to Cursor Grok 4.5", () => {
+  it("resolves cursor-grok-4.5-high to Cursor Grok 4.5 fast rates", () => {
     const detailed = resolveModelPricingDetailed("cursor-grok-4.5-high");
     expect(detailed?.entry.id).toBe("grok-4.5");
-    expect(detailed?.variant?.id).toBe("high");
+    expect(detailed?.variant?.id).toBe("fast");
     expect(detailed?.entry.pool).toBe("firstParty");
+    expect(detailed?.effectiveRates.input).toBe(4);
+    expect(detailed?.effectiveRates.output).toBe(12);
+  });
+
+  it("resolves cursor-grok-4.6-fast to Cursor Grok 4.6 custom rates", () => {
+    const detailed = resolveModelPricingDetailed("cursor-grok-4.6-fast");
+    expect(detailed?.entry.id).toBe("grok-4.6");
+    expect(detailed?.variant?.id).toBe("fast");
+    expect(detailed?.entry.pool).toBe("firstParty");
+    expect(detailed?.effectiveRates.input).toBe(4);
+    expect(detailed?.effectiveRates.cacheRead).toBe(1);
+    expect(detailed?.effectiveRates.output).toBe(12);
+  });
+
+  it("applies custom fast rates for Composer 2.5 fast", () => {
+    const detailed = resolveModelPricingDetailed("composer-2.5-fast");
+    expect(detailed?.variant?.id).toBe("fast");
+    expect(detailed?.effectiveRates.input).toBe(3);
+    expect(detailed?.effectiveRates.cacheRead).toBe(0.5);
+    expect(detailed?.effectiveRates.output).toBe(15);
   });
 
   it("resolves effort-tier API slugs missing from explicit aliases", () => {
@@ -162,7 +182,8 @@ describe("resolveModelPricing", () => {
       },
       entry!,
     );
-    expect(cost.totalCents).toBeGreaterThan(0);
+    // 1M*$3 + 2M*$0.5 + 0.5M*$15 = $3 + $1 + $7.5 = $11.5 → 1150 cents
+    expect(cost.totalCents).toBeCloseTo(1150, 0);
   });
 
   it("applies custom fast rates for Claude Opus 4.8 fast", () => {

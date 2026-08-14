@@ -12,6 +12,8 @@ describe("formatModelLabel", () => {
     expect(formatModelLabel("gpt-5.5-high")).toBe("GPT-5.5");
     expect(formatModelLabel("claude-4-sonnet-thinking-high")).toBe("Claude 4 Sonnet");
     expect(formatModelLabel("composer-2.5-fast")).toBe("Composer 2.5");
+    expect(formatModelLabel("cursor-grok-4.6")).toBe("Cursor Grok 4.6");
+    expect(formatModelLabel("cursor-grok-4.6-fast")).toBe("Cursor Grok 4.6");
   });
 });
 

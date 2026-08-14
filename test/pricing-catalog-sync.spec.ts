@@ -13,6 +13,7 @@ import { mergeCatalogsWithStats } from "../src/pricing-catalog-merge";
 import { PricingCatalogStore } from "../src/pricing-catalog-store";
 import {
   buildOverlayFromMarkdown,
+  parseCursorModelsTable,
   parseCursorTokenRate,
   parseMarkdownPlans,
   parseMarkdownPricingTable,
@@ -36,6 +37,13 @@ describe("pricing catalog sync parser", () => {
     expect(rows[2]?.hidden).toBe(true);
   });
 
+  it("parses Cursor Models base rows and skips Fast variants", () => {
+    const rows = parseCursorModelsTable(fixtureMarkdown);
+    expect(rows.map((row) => row.displayName)).toEqual(["Grok 4.6", "Grok 4.5", "Composer 2.5"]);
+    expect(rows[0]?.rates.input).toBe(2);
+    expect(rows[0]?.rates.output).toBe(6);
+  });
+
   it("parses plans and cursor token rate", () => {
     const plans = parseMarkdownPlans(fixtureMarkdown);
     expect(plans.map((plan) => plan.id)).toEqual(["start", "pro"]);
@@ -49,7 +57,7 @@ describe("pricing catalog sync parser", () => {
       fixtureMarkdown,
       bundled,
     );
-    expect(updated).toBeGreaterThanOrEqual(3);
+    expect(updated).toBeGreaterThanOrEqual(5);
     expect(added).toBe(1);
     expect(runtimeOnlyModelIds).toEqual(["future-model-x"]);
     expect(overlay.lastUpdated).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -59,6 +67,9 @@ describe("pricing catalog sync parser", () => {
     const kimi = catalog.models.find((entry) => entry.id === "kimi-k3");
     expect(kimi?.hidden).toBe(true);
     expect(kimi?.rates.output).toBe(15);
+    const grok46 = catalog.models.find((entry) => entry.id === "grok-4.6");
+    expect(grok46?.pool).toBe("firstParty");
+    expect(grok46?.rates.input).toBe(2);
   });
 
   it("applies runtime overlay without changing bundled aliases", () => {

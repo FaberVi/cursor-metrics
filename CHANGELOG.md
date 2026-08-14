@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.8.1] - 2026-08-13
+
+### Added
+- **Cursor Grok 4.6** (and Fast) in the first-party pricing catalog and pool classification.
+
+### Changed
+- Composer 2.5 Fast and Grok 4.5 Fast use official **customRates** ($3/$15 and $4/$12 per 1M) instead of same-rate-more-tokens.
+- Pricing catalog sync parses the **Cursor Models** docs table (in addition to Other Models).
+- GPT-5.6 Luna / Terra rates and Gemini 3.5 Flash `hidden` flag aligned with [cursor.com/docs/models-and-pricing](https://cursor.com/docs/models-and-pricing).
+
 ## [0.8.0] - 2026-07-20
 
 ### Changed
